@@ -19,54 +19,54 @@ using std::string;
 class StorageManager;
 
 class Microbenchmark : public Application {
- public:
+  public:
+    enum TxnType { INITIALIZE = 0, MICROTXN_SP = 1, MICROTXN_MP = 2 };
 
-  enum TxnType {
-	  INITIALIZE=0,
-	  MICROTXN_SP=1,
-	  MICROTXN_MP=2
-  };
+    Microbenchmark(Configuration *config, int partition_count,
+                   int partition_id) {
+        this->config = config;
+        nparts = partition_count;
+        this_partition_id = partition_id;
+    }
 
+    virtual ~Microbenchmark() {}
 
-  Microbenchmark(Configuration* config, int partition_count, int partition_id) {
-	  this->config = config;
-	  nparts = partition_count;
-	  this_partition_id = partition_id;
-  }
+    virtual void NewTxn(int64 txn_id, int txn_type,
+                        Configuration *config = NULL,
+                        TxnProto *txn = NULL) const;
+    virtual int Execute(TxnProto *txn, StorageManager *storage) const;
 
-  virtual ~Microbenchmark() {}
+    TxnProto *InitializeTxn();
+    TxnProto *MicroTxnSP(int64 txn_id, int part);
+    TxnProto *MicroTxnMP(int64 txn_id, int *parts, int num_parts);
+    TxnProto *MicroTxnDependentSP(int64 txn_id, int part);
+    TxnProto *MicroTxnDependentMP(int64 txn_id, int *parts, int num_parts);
 
-  virtual void NewTxn(int64 txn_id, int txn_type,
-                           Configuration* config = NULL, TxnProto* txn = NULL) const;
-  virtual int Execute(TxnProto* txn, StorageManager* storage) const;
+    Configuration *config;
+    int nparts;
+    int hot_records = atoi(ConfigReader::Value("index_size").c_str());
+    int index_records = atoi(ConfigReader::Value("index_size").c_str());
+    int this_partition_id;
+    int kRWSetSize = atoi(ConfigReader::Value("rw_set_size").c_str());
+    int indexAccessNum = atoi(ConfigReader::Value("index_num").c_str());
+    int kDBSize = atoi(ConfigReader::Value("total_key").c_str());
 
-  TxnProto* InitializeTxn();
-  TxnProto* MicroTxnSP(int64 txn_id, int part);
-  TxnProto* MicroTxnMP(int64 txn_id, int* parts, int num_parts);
-  TxnProto* MicroTxnDependentSP(int64 txn_id, int part);
-  TxnProto* MicroTxnDependentMP(int64 txn_id, int* parts, int num_parts);
+    virtual void InitializeStorage(Storage *storage, Configuration *conf) const;
 
-  Configuration* config;
-  int nparts;
-  int hot_records = atoi(ConfigReader::Value("index_size").c_str());
-  int index_records = atoi(ConfigReader::Value("index_size").c_str());
-  int this_partition_id;
-  int kRWSetSize = atoi(ConfigReader::Value("rw_set_size").c_str());
-  int indexAccessNum = atoi(ConfigReader::Value("index_num").c_str());
-  int kDBSize = atoi(ConfigReader::Value("total_key").c_str());
-
-  virtual void InitializeStorage(Storage* storage, Configuration* conf) const;
-
- private:
-  void GetRandomKeys(set<int>* keys, int num_keys, int key_start,
-                     int key_limit, int part);
-  inline int RandomLocalKey(const int key_start, const int key_limit, const int part) const {
-		return key_start + part + nparts * (rand() % ((key_limit - key_start)/nparts));
-  }
-  inline int NotSoRandomLocalKey(const int64 rand_num, const int key_start, const int key_limit, const int part) const {
-		return key_start + part + nparts * (abs(rand_num) % ((key_limit - key_start)/nparts));
-  }
-  Microbenchmark() {}
+  private:
+    void GetRandomKeys(set<int> *keys, int num_keys, int key_start,
+                       int key_limit, int part);
+    inline int RandomLocalKey(const int key_start, const int key_limit,
+                              const int part) const {
+        return key_start + part +
+               nparts * (rand() % ((key_limit - key_start) / nparts));
+    }
+    inline int NotSoRandomLocalKey(const int64 rand_num, const int key_start,
+                                   const int key_limit, const int part) const {
+        return key_start + part +
+               nparts * (abs(rand_num) % ((key_limit - key_start) / nparts));
+    }
+    Microbenchmark() {}
 };
 
-#endif  // _DB_APPLICATIONS_MICROBENCHMARK_H_
+#endif // _DB_APPLICATIONS_MICROBENCHMARK_H_

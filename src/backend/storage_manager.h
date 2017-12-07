@@ -20,22 +20,22 @@
 #ifndef _DB_BACKEND_RECON_STORAGE_MANAGER_H_
 #define _DB_BACKEND_RECON_STORAGE_MANAGER_H_
 
-#include <ucontext.h>
 #include <common/utils.h>
+#include <ucontext.h>
 
+#include <atomic>
 #include <tr1/unordered_map>
 #include <vector>
-#include <atomic>
 
 #include "backend/simple_storage.h"
-#include "common/types.h"
 #include "common/configuration.h"
-#include "proto/txn.pb.h"
+#include "common/types.h"
 #include "proto/message.pb.h"
 #include "proto/tpcc_args.pb.h"
+#include "proto/txn.pb.h"
 
-using std::vector;
 using std::tr1::unordered_map;
+using std::vector;
 
 class Configuration;
 class Connection;
@@ -45,112 +45,109 @@ class TxnProto;
 class MessageProto;
 class Sequencer;
 
-
 class StorageManager {
- public:
-  // TODO(alex): Document this class correctly.
-  StorageManager(Configuration* config, Connection* connection,
-		  Storage* actual_storage, TxnProto* txn);
+  public:
+    // TODO(alex): Document this class correctly.
+    StorageManager(Configuration *config, Connection *connection,
+                   Storage *actual_storage, TxnProto *txn);
 
-  StorageManager(Configuration* config, Connection* connection,
-		  Storage* actual_storage);
+    StorageManager(Configuration *config, Connection *connection,
+                   Storage *actual_storage);
 
-  ~StorageManager();
+    ~StorageManager();
 
-  void SendLocalReads();
+    void SendLocalReads();
 
-  void SetupTxn(TxnProto* txn);
+    void SetupTxn(TxnProto *txn);
 
-  Value* ReadObject(const Key& key, int& read_state);
+    Value *ReadObject(const Key &key, int &read_state);
 
-  inline bool PutObject(const Key& key, Value* value){
-	  return actual_storage_->PutObject(key, value);
-  }
+    inline bool PutObject(const Key &key, Value *value) {
+        return actual_storage_->PutObject(key, value);
+    }
 
-  // Some transactions may have this kind of behavior: read a value, if some condition is satisfied, update the
-  // value, then do something. If this transaction was suspended, when restarting due to the value has been modified,
-  // previous operations will not be triggered again and such the exec_counter will be wrong.
+    // Some transactions may have this kind of behavior: read a value, if some
+    // condition is satisfied, update the value, then do something. If this
+    // transaction was suspended, when restarting due to the value has been
+    // modified, previous operations will not be triggered again and such the
+    // exec_counter will be wrong.
 
-  void HandleReadResult(const MessageProto& message);
+    void HandleReadResult(const MessageProto &message);
 
-  Storage* GetStorage() { return actual_storage_; }
-  inline TxnProto* GetTxn() { return txn_; }
-  inline TPCCArgs* get_args() { return tpcc_args;}
+    Storage *GetStorage() { return actual_storage_; }
+    inline TxnProto *GetTxn() { return txn_; }
+    inline TPCCArgs *get_args() { return tpcc_args; }
 
-  inline void Init(){
-	  exec_counter_ = 0;
-  }
+    inline void Init() { exec_counter_ = 0; }
 
-  inline bool ShouldExec()
-  {
-	  LOG(txn_->txn_id(), " should exec or not? Exec is "<<exec_counter_<<", max is "<<max_counter_);
-	  if (exec_counter_ == max_counter_){
-		++exec_counter_;
-		++max_counter_;
-		return true;
-	  }
-	  else{
-		  LOCKLOG(txn_->txn_id(), " should not exec, now counter is "<<exec_counter_);
-		  ++exec_counter_;
-		  return false;
-	  }
-  }
+    inline bool ShouldExec() {
+        LOG(txn_->txn_id(), " should exec or not? Exec is " << exec_counter_
+                                                            << ", max is "
+                                                            << max_counter_);
+        if (exec_counter_ == max_counter_) {
+            ++exec_counter_;
+            ++max_counter_;
+            return true;
+        } else {
+            LOCKLOG(txn_->txn_id(),
+                    " should not exec, now counter is " << exec_counter_);
+            ++exec_counter_;
+            return false;
+        }
+    }
 
-  inline bool DeleteObject(const Key& key) {
-	  // Delete object from storage if applicable.
-	  if (config->LookupPartition(key) == config->this_node_partition)
-	    return actual_storage_->DeleteObject(key);
-	  else
-	    return true;  // Not this node's problem.
-  }
+    inline bool DeleteObject(const Key &key) {
+        // Delete object from storage if applicable.
+        if (config->LookupPartition(key) == config->this_node_partition)
+            return actual_storage_->DeleteObject(key);
+        else
+            return true; // Not this node's problem.
+    }
 
-  //void AddKeys(string* keys) {keys_ = keys;}
-  //vector<string> GetKeys() { return keys_;}
+    // void AddKeys(string* keys) {keys_ = keys;}
+    // vector<string> GetKeys() { return keys_;}
 
-  inline TxnProto* get_txn(){ return txn_; }
+    inline TxnProto *get_txn() { return txn_; }
 
-  void Abort();
-  void ApplyChange(bool is_committing);
-  void Setup(TxnProto* txn);
+    void Abort();
+    void ApplyChange(bool is_committing);
+    void Setup(TxnProto *txn);
 
- private:
+  private:
+    // private:
+    friend class DeterministicScheduler;
 
-// private:
-  friend class DeterministicScheduler;
+    // Pointer to the configuration object for this node.
+    Configuration *config;
 
-  // Pointer to the configuration object for this node.
-  Configuration* config;
+    // A Connection object that can be used to send and receive messages.
+    Connection *connection_;
 
-  // A Connection object that can be used to send and receive messages.
-  Connection* connection_;
+    // Storage layer that *actually* stores data objects on this node.
+    Storage *actual_storage_;
 
-  // Storage layer that *actually* stores data objects on this node.
-  Storage* actual_storage_;
+    // Local copy of all data objects read/written by 'txn_', populated at
+    // TxnManager construction time.
+    // unordered_map<Key, ValuePair> write_set_;
+    unordered_map<Key, Value *> read_set_;
+    unordered_map<Key, Value *> remote_objects_;
 
-  // Local copy of all data objects read/written by 'txn_', populated at
-  // TxnManager construction time.
-  //unordered_map<Key, ValuePair> write_set_;
-  unordered_map<Key, Value*> read_set_;
-  unordered_map<Key, Value*> remote_objects_;
+    // Transaction that corresponds to this instance of a TxnManager.
+    TxnProto *txn_;
 
-  // Transaction that corresponds to this instance of a TxnManager.
-  TxnProto* txn_;
+    // The message containing read results that should be sent to remote nodes
+    MessageProto *message_;
 
-  // The message containing read results that should be sent to remote nodes
-  MessageProto* message_;
+    // Indicate whether the message contains any value that should be sent
+    bool message_has_value_;
 
-  // Indicate whether the message contains any value that should be sent
-  bool message_has_value_;
+    // Counting how many transaction steps the current tranasction is executing
+    int exec_counter_;
 
-  // Counting how many transaction steps the current tranasction is executing
-  int exec_counter_;
+    // Counting how many transaction steps have been executed the last time
+    int max_counter_;
 
-  // Counting how many transaction steps have been executed the last time
-  int max_counter_;
-
-  TPCCArgs* tpcc_args;
-
+    TPCCArgs *tpcc_args;
 };
 
-#endif  // _DB_BACKEND_STORAGE_MANAGER_H_
-
+#endif // _DB_BACKEND_STORAGE_MANAGER_H_

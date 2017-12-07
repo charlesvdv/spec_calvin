@@ -12,16 +12,17 @@
 using namespace std;
 
 class ConfigReader {
-public:
-	static map<string, string> content_;
+  public:
+    static map<string, string> content_;
 
-public:
-	static void Initialize(std::string const& configFile);
+  public:
+    static void Initialize(std::string const &configFile);
 
-	static string Value(std::string const& entry);
+    static string Value(std::string const &entry);
 
-	//static string Value(std::string const& section, std::string const& entry, double value);
-	//static string Value(std::string const& section, std::string const& entry, std::string const& value);
+    // static string Value(std::string const& section, std::string const& entry,
+    // double value);  static string Value(std::string const& section,
+    // std::string const& entry, std::string const& value);
 };
 
 #endif /* COMMON_CONFIG_READER_H_ */

@@ -13,23 +13,23 @@ class Connection;
 class Storage;
 
 class SerialScheduler : public Scheduler {
- public:
-  SerialScheduler(Configuration* conf, Connection* connection,
-                  Storage* storage, bool checkpointing);
-  virtual ~SerialScheduler();
-  virtual void Run(const Application& application);
+  public:
+    SerialScheduler(Configuration *conf, Connection *connection,
+                    Storage *storage, bool checkpointing);
+    virtual ~SerialScheduler();
+    virtual void Run(const Application &application);
 
- private:
-  // Configuration specifying node & system settings.
-  Configuration* configuration_;
+  private:
+    // Configuration specifying node & system settings.
+    Configuration *configuration_;
 
-  // Connection for sending and receiving protocol messages.
-  Connection* connection_;
+    // Connection for sending and receiving protocol messages.
+    Connection *connection_;
 
-  // Storage layer used in application execution.
-  Storage* storage_;
+    // Storage layer used in application execution.
+    Storage *storage_;
 
-  // Should we checkpoint?
-  bool checkpointing_;
+    // Should we checkpoint?
+    bool checkpointing_;
 };
-#endif  // _DB_SCHEDULER_SERIAL_SCHEDULER_H_
+#endif // _DB_SCHEDULER_SERIAL_SCHEDULER_H_

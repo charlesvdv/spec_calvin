@@ -157,10 +157,9 @@ TEST(LinkUnlinkChannelTest) {
   END;
 }
 */
-int main(int argc, char** argv) {
-//  InprocTest();
-//  RemoteTest();
-//  ChannelNotCreatedYetTest();
-//  LinkUnlinkChannelTest();
+int main(int argc, char **argv) {
+    //  InprocTest();
+    //  RemoteTest();
+    //  ChannelNotCreatedYetTest();
+    //  LinkUnlinkChannelTest();
 }
-

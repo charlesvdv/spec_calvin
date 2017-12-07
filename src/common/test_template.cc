@@ -3,12 +3,9 @@
 #include "common/testing.h"
 
 TEST(MyTest) {
-  // Testing code here ...
+    // Testing code here ...
 
-  END;
+    END;
 }
 
-int main(int argc, char** argv) {
-  MyTest();
-}
-
+int main(int argc, char **argv) { MyTest(); }

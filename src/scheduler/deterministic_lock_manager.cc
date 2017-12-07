@@ -13,270 +13,305 @@
 using std::vector;
 
 DeterministicLockManager::DeterministicLockManager(
-    deque<TxnProto*>* ready_txns,
-    Configuration* config)
-  : configuration_(config),
-    ready_txns_(ready_txns) {
-  for (int i = 0; i < TABLE_SIZE; i++)
-    lock_table_[i] = new deque<KeysList>();
+    deque<TxnProto *> *ready_txns, Configuration *config)
+    : configuration_(config), ready_txns_(ready_txns) {
+    for (int i = 0; i < TABLE_SIZE; i++)
+        lock_table_[i] = new deque<KeysList>();
 }
 
-int DeterministicLockManager::Lock(TxnProto* txn) {
-  int not_acquired = 0;
+int DeterministicLockManager::Lock(TxnProto *txn) {
+    int not_acquired = 0;
 
-  // Handle read/write lock requests.
-  for (int i = 0; i < txn->read_write_set_size(); i++) {
-    // Only lock local keys.
-    if (IsLocal(txn->read_write_set(i))) {
-    	//LOG(txn->txn_id(), " trying to lock "<<txn->read_write_set(i));
-      deque<KeysList>* key_requests = lock_table_[Hash(txn->read_write_set(i))];
-      
-      deque<KeysList>::iterator it;
-      for(it = key_requests->begin();
-          it != key_requests->end() && it->key != txn->read_write_set(i); ++it) { 
-      }
-      deque<LockRequest>* requests;
-      if (it == key_requests->end()) {
-        requests = new deque<LockRequest>();
-        key_requests->push_back(KeysList(txn->read_write_set(i), requests));
-      } else {
-        requests = it->locksrequest;
-      }
-      
-      // Only need to request this if lock txn hasn't already requested it.
-      if (requests->empty() || txn != requests->back().txn) {
-        requests->push_back(LockRequest(WRITE, txn));
-        // Write lock request fails if there is any previous request at all.
-        //LOG(txn->txn_id(), " getting lock for "<<txn->read_write_set(i));
-        if (requests->size() > 1){
-          not_acquired++;
-          //LOG(txn->txn_id(), " write blocked by "<<requests->front().txn->txn_id()<<" for "<<txn->read_write_set(i));
-        }
-      }
-    }
-  }
+    // Handle read/write lock requests.
+    for (int i = 0; i < txn->read_write_set_size(); i++) {
+        // Only lock local keys.
+        if (IsLocal(txn->read_write_set(i))) {
+            // LOG(txn->txn_id(), " trying to lock "<<txn->read_write_set(i));
+            deque<KeysList> *key_requests =
+                lock_table_[Hash(txn->read_write_set(i))];
 
-  for (int i = 0; i < txn->pred_read_write_set_size(); i++) {
-      // Only lock local keys.
-      if (IsLocal(txn->pred_read_write_set(i))) {
-    	  //LOG(txn->txn_id(), " trying to lock "<<txn->pred_read_write_set(i));
-        deque<KeysList>* key_requests = lock_table_[Hash(txn->pred_read_write_set(i))];
-
-        deque<KeysList>::iterator it;
-        for(it = key_requests->begin();
-            it != key_requests->end() && it->key != txn->pred_read_write_set(i); ++it) {
-        }
-        deque<LockRequest>* requests;
-        if (it == key_requests->end()) {
-          requests = new deque<LockRequest>();
-          key_requests->push_back(KeysList(txn->pred_read_write_set(i), requests));
-        } else {
-          requests = it->locksrequest;
-        }
-
-        // Only need to request this if lock txn hasn't already requested it.
-        if (requests->empty() || txn != requests->back().txn) {
-          requests->push_back(LockRequest(WRITE, txn));
-          //LOG(txn->txn_id(), " pending for pred "<<txn->pred_read_write_set(i));
-          // Write lock request fails if there is any previous request at all.
-          if (requests->size() > 1){
-            not_acquired++;
-            //LOG(txn->txn_id(), " pred-write blocked by "<<requests->front().txn->txn_id()<<" for "<<txn->pred_read_write_set(i));
-          }
-        }
-      }
-    }
-
-  // Handle read lock requests. This is last so that we don't have to deal with
-  // upgrading lock requests from read to write on hash collisions.
-  for (int i = 0; i < txn->read_set_size(); i++) {
-    // Only lock local keys.
-    if (IsLocal(txn->read_set(i))) {
-  	  //LOG(txn->txn_id(), " trying to lock "<<txn->read_set(i));
-      deque<KeysList>* key_requests = lock_table_[Hash(txn->read_set(i))];
-      
-      deque<KeysList>::iterator it;
-      for(it = key_requests->begin();
-          it != key_requests->end() && it->key != txn->read_set(i); ++it) { 
-      }
-      deque<LockRequest>* requests;
-      if (it == key_requests->end()) {
-        requests = new deque<LockRequest>();
-        key_requests->push_back(KeysList(txn->read_set(i), requests));
-      } else {
-        requests = it->locksrequest;
-      }
-      
-      // Only need to request this if lock txn hasn't already requested it.
-      if (requests->empty() || txn != requests->back().txn) {
-        requests->push_back(LockRequest(READ, txn));
-        //LOG(txn->txn_id(), " pending for read "<<txn->read_set(i));
-        // Read lock request fails if there is any previous write request.
-        for (deque<LockRequest>::iterator it = requests->begin();
-             it != requests->end(); ++it) {
-          if (it->mode == WRITE) {
-            not_acquired++;
-            //LOG(txn->txn_id(), " read blocked by "<<requests->front().txn->txn_id()<<" for "<<txn->read_set(i));
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  for (int i = 0; i < txn->pred_read_set_size(); i++) {
-      // Only lock local keys.
-      if (IsLocal(txn->pred_read_set(i))) {
-    	  //LOG(txn->txn_id(), " trying to lock "<<txn->pred_read_set(i));
-        deque<KeysList>* key_requests = lock_table_[Hash(txn->pred_read_set(i))];
-
-        deque<KeysList>::iterator it;
-        for(it = key_requests->begin();
-            it != key_requests->end() && it->key != txn->pred_read_set(i); ++it) {
-        }
-        deque<LockRequest>* requests;
-        if (it == key_requests->end()) {
-          requests = new deque<LockRequest>();
-          key_requests->push_back(KeysList(txn->pred_read_set(i), requests));
-        } else {
-          requests = it->locksrequest;
-        }
-
-        // Only need to request this if lock txn hasn't already requested it.
-        if (requests->empty() || txn != requests->back().txn) {
-          requests->push_back(LockRequest(READ, txn));
-          //LOG(txn->txn_id(), " pending for pred read "<<txn->pred_read_set(i));
-          // Read lock request fails if there is any previous write request.
-          for (deque<LockRequest>::iterator it = requests->begin();
-               it != requests->end(); ++it) {
-            if (it->mode == WRITE) {
-              not_acquired++;
-              //LOG(txn->txn_id(), " pred-read blocked by "<<requests->front().txn->txn_id()<<" for "<<txn->pred_read_set(i));
-              break;
+            deque<KeysList>::iterator it;
+            for (it = key_requests->begin();
+                 it != key_requests->end() && it->key != txn->read_write_set(i);
+                 ++it) {
             }
-          }
+            deque<LockRequest> *requests;
+            if (it == key_requests->end()) {
+                requests = new deque<LockRequest>();
+                key_requests->push_back(
+                    KeysList(txn->read_write_set(i), requests));
+            } else {
+                requests = it->locksrequest;
+            }
+
+            // Only need to request this if lock txn hasn't already requested
+            // it.
+            if (requests->empty() || txn != requests->back().txn) {
+                requests->push_back(LockRequest(WRITE, txn));
+                // Write lock request fails if there is any previous request at
+                // all. LOG(txn->txn_id(), " getting lock for
+                // "<<txn->read_write_set(i));
+                if (requests->size() > 1) {
+                    not_acquired++;
+                    // LOG(txn->txn_id(), " write blocked by
+                    // "<<requests->front().txn->txn_id()<<" for
+                    // "<<txn->read_write_set(i));
+                }
+            }
         }
-      }
     }
 
-  // Record and return the number of locks that the txn is blocked on.
-  if (not_acquired > 0)
-    txn_waits_[txn] = not_acquired;
-  else
-    ready_txns_->push_back(txn);
-  return not_acquired;
-}
+    for (int i = 0; i < txn->pred_read_write_set_size(); i++) {
+        // Only lock local keys.
+        if (IsLocal(txn->pred_read_write_set(i))) {
+            // LOG(txn->txn_id(), " trying to lock
+            // "<<txn->pred_read_write_set(i));
+            deque<KeysList> *key_requests =
+                lock_table_[Hash(txn->pred_read_write_set(i))];
 
-void DeterministicLockManager::Release(TxnProto* txn) {
+            deque<KeysList>::iterator it;
+            for (it = key_requests->begin();
+                 it != key_requests->end() &&
+                 it->key != txn->pred_read_write_set(i);
+                 ++it) {
+            }
+            deque<LockRequest> *requests;
+            if (it == key_requests->end()) {
+                requests = new deque<LockRequest>();
+                key_requests->push_back(
+                    KeysList(txn->pred_read_write_set(i), requests));
+            } else {
+                requests = it->locksrequest;
+            }
 
-  for (int i = 0; i < txn->read_set_size(); i++)
-    if (IsLocal(txn->read_set(i))){
-    	//LOG(txn->txn_id(), " releasing read "<<txn->read_set(i));
-    	Release(txn->read_set(i), txn);
+            // Only need to request this if lock txn hasn't already requested
+            // it.
+            if (requests->empty() || txn != requests->back().txn) {
+                requests->push_back(LockRequest(WRITE, txn));
+                // LOG(txn->txn_id(), " pending for pred
+                // "<<txn->pred_read_write_set(i));
+                // Write lock request fails if there is any previous request at
+                // all.
+                if (requests->size() > 1) {
+                    not_acquired++;
+                    // LOG(txn->txn_id(), " pred-write blocked by
+                    // "<<requests->front().txn->txn_id()<<" for
+                    // "<<txn->pred_read_write_set(i));
+                }
+            }
+        }
     }
-  for (int i = 0; i < txn->pred_read_set_size(); i++)
-    if (IsLocal(txn->pred_read_set(i)))
-      Release(txn->pred_read_set(i), txn);
-  // Currently commented out because nothing in any write set can conflict
-  // in TPCC or Microbenchmark.
-//  for (int i = 0; i < txn->write_set_size(); i++)
-//    if (IsLocal(txn->write_set(i)))
-//      Release(txn->write_set(i), txn);
-  for (int i = 0; i < txn->read_write_set_size(); i++){
-    if (IsLocal(txn->read_write_set(i))){
-    	//LOG(txn->txn_id(), " releasing write "<<txn->read_write_set(i));
-    	Release(txn->read_write_set(i), txn);
+
+    // Handle read lock requests. This is last so that we don't have to deal
+    // with upgrading lock requests from read to write on hash collisions.
+    for (int i = 0; i < txn->read_set_size(); i++) {
+        // Only lock local keys.
+        if (IsLocal(txn->read_set(i))) {
+            // LOG(txn->txn_id(), " trying to lock "<<txn->read_set(i));
+            deque<KeysList> *key_requests = lock_table_[Hash(txn->read_set(i))];
+
+            deque<KeysList>::iterator it;
+            for (it = key_requests->begin();
+                 it != key_requests->end() && it->key != txn->read_set(i);
+                 ++it) {
+            }
+            deque<LockRequest> *requests;
+            if (it == key_requests->end()) {
+                requests = new deque<LockRequest>();
+                key_requests->push_back(KeysList(txn->read_set(i), requests));
+            } else {
+                requests = it->locksrequest;
+            }
+
+            // Only need to request this if lock txn hasn't already requested
+            // it.
+            if (requests->empty() || txn != requests->back().txn) {
+                requests->push_back(LockRequest(READ, txn));
+                // LOG(txn->txn_id(), " pending for read "<<txn->read_set(i));
+                // Read lock request fails if there is any previous write
+                // request.
+                for (deque<LockRequest>::iterator it = requests->begin();
+                     it != requests->end(); ++it) {
+                    if (it->mode == WRITE) {
+                        not_acquired++;
+                        // LOG(txn->txn_id(), " read blocked by
+                        // "<<requests->front().txn->txn_id()<<" for
+                        // "<<txn->read_set(i));
+                        break;
+                    }
+                }
+            }
+        }
     }
-  }
-  for (int i = 0; i < txn->pred_read_write_set_size(); i++)
-    if (IsLocal(txn->pred_read_write_set(i)))
-      Release(txn->pred_read_write_set(i), txn);
+
+    for (int i = 0; i < txn->pred_read_set_size(); i++) {
+        // Only lock local keys.
+        if (IsLocal(txn->pred_read_set(i))) {
+            // LOG(txn->txn_id(), " trying to lock "<<txn->pred_read_set(i));
+            deque<KeysList> *key_requests =
+                lock_table_[Hash(txn->pred_read_set(i))];
+
+            deque<KeysList>::iterator it;
+            for (it = key_requests->begin();
+                 it != key_requests->end() && it->key != txn->pred_read_set(i);
+                 ++it) {
+            }
+            deque<LockRequest> *requests;
+            if (it == key_requests->end()) {
+                requests = new deque<LockRequest>();
+                key_requests->push_back(
+                    KeysList(txn->pred_read_set(i), requests));
+            } else {
+                requests = it->locksrequest;
+            }
+
+            // Only need to request this if lock txn hasn't already requested
+            // it.
+            if (requests->empty() || txn != requests->back().txn) {
+                requests->push_back(LockRequest(READ, txn));
+                // LOG(txn->txn_id(), " pending for pred read
+                // "<<txn->pred_read_set(i)); Read lock request fails if there
+                // is any previous write request.
+                for (deque<LockRequest>::iterator it = requests->begin();
+                     it != requests->end(); ++it) {
+                    if (it->mode == WRITE) {
+                        not_acquired++;
+                        // LOG(txn->txn_id(), " pred-read blocked by
+                        // "<<requests->front().txn->txn_id()<<" for
+                        // "<<txn->pred_read_set(i));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Record and return the number of locks that the txn is blocked on.
+    if (not_acquired > 0)
+        txn_waits_[txn] = not_acquired;
+    else
+        ready_txns_->push_back(txn);
+    return not_acquired;
 }
 
-void DeterministicLockManager::Release(const Key& key, TxnProto* txn) {
-  // Avoid repeatedly looking up key in the unordered_map.
-      deque<KeysList>* key_requests = lock_table_[Hash(key)];
-      
-      //LOG(txn->txn_id(), " trying to unlock "<<key);
-  deque<KeysList>::iterator it1;
-  for(it1 = key_requests->begin();
-    it1 != key_requests->end() && it1->key != key; ++it1) { 
-  }
+void DeterministicLockManager::Release(TxnProto *txn) {
 
-  if(it1 == key_requests->end()){
-	  //LOG(txn->txn_id(), " trying to release lock twice for "<<key);
-	  return;
-  }
-  else{
-	  deque<LockRequest>* requests = it1->locksrequest;
-	  // Seek to the target request. Note whether any write lock requests precede
-	  // the target.
-	  bool write_requests_precede_target = false;
-	  deque<LockRequest>::iterator it;
-	  for (it = requests->begin();
-	         it != requests->end() && it->txn != txn; ++it) {
-		  if (it->mode == WRITE)
-	        write_requests_precede_target = true;
-	  }
-
-	  // If we found the request, erase it. No need to do anything otherwise.
-	  if (it != requests->end()) {
-	      // Save an iterator pointing to the target to call erase on after handling
-	      // lock inheritence, since erase(...) trashes all iterators.
-	      deque<LockRequest>::iterator target = it;
-
-	      // If there are more requests following the target request, one or more
-	      // may need to be granted as a result of the target's release.
-	      ++it;
-	      if (it != requests->end()) {
-	        vector<TxnProto*> new_owners;
-
-	    	//LOG(txn->txn_id(), " requester mode is "<<it->mode<<", txn id is "<<it->txn->txn_id());
-	        // Grant subsequent request(s) if:
-	        //  (a) The canceled request held a write lock.
-	        //  (b) The canceled request held a read lock ALONE.
-	        //  (c) The canceled request was a write request preceded only by read
-	        //      requests and followed by one or more read requests.
-	        if (target == requests->begin() &&
-	            (target->mode == WRITE ||
-	             (target->mode == READ && it->mode == WRITE))) {  // (a) or (b)
-	          // If a write lock request follows, grant it.
-	          if (it->mode == WRITE)
-	            new_owners.push_back(it->txn);
-	          // If a sequence of read lock requests follows, grant all of them.
-	          for (; it != requests->end() && it->mode == READ; ++it)
-	            new_owners.push_back(it->txn);
-	        } else if (!write_requests_precede_target &&
-	                   target->mode == WRITE && it->mode == READ) {  // (c)
-	          // If a sequence of read lock requests follows, grant all of them.
-	          for (; it != requests->end() && it->mode == READ; ++it)
-	            new_owners.push_back(it->txn);
-	        }
-
-	        // Handle txns with newly granted requests that may now be ready to run.
-	        for (uint64 j = 0; j < new_owners.size(); j++) {
-	          txn_waits_[new_owners[j]]--;
-	          if (txn_waits_[new_owners[j]] == 0) {
-	            // The txn that just acquired the released lock is no longer waiting
-	            // on any lock requests.
-	        	  //LOG(txn->txn_id(), " giving "<<new_owners[j]->txn_id()<<" key "<<key);
-	        	  ready_txns_->push_back(new_owners[j]);
-	        	  txn_waits_.erase(new_owners[j]);
-	          }
-	          //else
-	        	  //LOG(txn->txn_id(), " giving "<<new_owners[j]->txn_id()<<" key "<<key<<", wait is "<<txn_waits_[new_owners[j]]);
-	        }
-	      }
-
-	      // Now it is safe to actually erase the target request.
-	      requests->erase(target);
-	      if (requests->size() == 0) {
-	        delete requests;
-	        key_requests->erase(it1);
-	      }
-
-	  }
-  }
-
+    for (int i = 0; i < txn->read_set_size(); i++)
+        if (IsLocal(txn->read_set(i))) {
+            // LOG(txn->txn_id(), " releasing read "<<txn->read_set(i));
+            Release(txn->read_set(i), txn);
+        }
+    for (int i = 0; i < txn->pred_read_set_size(); i++)
+        if (IsLocal(txn->pred_read_set(i)))
+            Release(txn->pred_read_set(i), txn);
+    // Currently commented out because nothing in any write set can conflict
+    // in TPCC or Microbenchmark.
+    //  for (int i = 0; i < txn->write_set_size(); i++)
+    //    if (IsLocal(txn->write_set(i)))
+    //      Release(txn->write_set(i), txn);
+    for (int i = 0; i < txn->read_write_set_size(); i++) {
+        if (IsLocal(txn->read_write_set(i))) {
+            // LOG(txn->txn_id(), " releasing write "<<txn->read_write_set(i));
+            Release(txn->read_write_set(i), txn);
+        }
+    }
+    for (int i = 0; i < txn->pred_read_write_set_size(); i++)
+        if (IsLocal(txn->pred_read_write_set(i)))
+            Release(txn->pred_read_write_set(i), txn);
 }
 
+void DeterministicLockManager::Release(const Key &key, TxnProto *txn) {
+    // Avoid repeatedly looking up key in the unordered_map.
+    deque<KeysList> *key_requests = lock_table_[Hash(key)];
+
+    // LOG(txn->txn_id(), " trying to unlock "<<key);
+    deque<KeysList>::iterator it1;
+    for (it1 = key_requests->begin();
+         it1 != key_requests->end() && it1->key != key; ++it1) {
+    }
+
+    if (it1 == key_requests->end()) {
+        // LOG(txn->txn_id(), " trying to release lock twice for "<<key);
+        return;
+    } else {
+        deque<LockRequest> *requests = it1->locksrequest;
+        // Seek to the target request. Note whether any write lock requests
+        // precede the target.
+        bool write_requests_precede_target = false;
+        deque<LockRequest>::iterator it;
+        for (it = requests->begin(); it != requests->end() && it->txn != txn;
+             ++it) {
+            if (it->mode == WRITE)
+                write_requests_precede_target = true;
+        }
+
+        // If we found the request, erase it. No need to do anything otherwise.
+        if (it != requests->end()) {
+            // Save an iterator pointing to the target to call erase on after
+            // handling lock inheritence, since erase(...) trashes all
+            // iterators.
+            deque<LockRequest>::iterator target = it;
+
+            // If there are more requests following the target request, one or
+            // more may need to be granted as a result of the target's release.
+            ++it;
+            if (it != requests->end()) {
+                vector<TxnProto *> new_owners;
+
+                // LOG(txn->txn_id(), " requester mode is "<<it->mode<<", txn id
+                // is
+                // "<<it->txn->txn_id());
+                // Grant subsequent request(s) if:
+                //  (a) The canceled request held a write lock.
+                //  (b) The canceled request held a read lock ALONE.
+                //  (c) The canceled request was a write request preceded only
+                //  by read
+                //      requests and followed by one or more read requests.
+                if (target == requests->begin() &&
+                    (target->mode == WRITE ||
+                     (target->mode == READ &&
+                      it->mode == WRITE))) { // (a) or (b)
+                    // If a write lock request follows, grant it.
+                    if (it->mode == WRITE)
+                        new_owners.push_back(it->txn);
+                    // If a sequence of read lock requests follows, grant all of
+                    // them.
+                    for (; it != requests->end() && it->mode == READ; ++it)
+                        new_owners.push_back(it->txn);
+                } else if (!write_requests_precede_target &&
+                           target->mode == WRITE && it->mode == READ) { // (c)
+                    // If a sequence of read lock requests follows, grant all of
+                    // them.
+                    for (; it != requests->end() && it->mode == READ; ++it)
+                        new_owners.push_back(it->txn);
+                }
+
+                // Handle txns with newly granted requests that may now be ready
+                // to run.
+                for (uint64 j = 0; j < new_owners.size(); j++) {
+                    txn_waits_[new_owners[j]]--;
+                    if (txn_waits_[new_owners[j]] == 0) {
+                        // The txn that just acquired the released lock is no
+                        // longer waiting on any lock requests.
+                        // LOG(txn->txn_id(), " giving
+                        // "<<new_owners[j]->txn_id()<<" key
+                        // "<<key);
+                        ready_txns_->push_back(new_owners[j]);
+                        txn_waits_.erase(new_owners[j]);
+                    }
+                    // else
+                    // LOG(txn->txn_id(), " giving "<<new_owners[j]->txn_id()<<"
+                    // key
+                    // "<<key<<", wait is "<<txn_waits_[new_owners[j]]);
+                }
+            }
+
+            // Now it is safe to actually erase the target request.
+            requests->erase(target);
+            if (requests->size() == 0) {
+                delete requests;
+                key_requests->erase(it1);
+            }
+        }
+    }
+}

@@ -25,19 +25,17 @@
 #include <string>
 #include <vector>
 //#include <unordered_map>
-#include <tr1/unordered_map>
 #include <pthread.h>
-
+#include <tr1/unordered_map>
 
 #include "common/types.h"
 #include "common/utils.h"
 
-
 using std::map;
 using std::string;
-using std::vector;
 using std::tr1::unordered_map;
-//using std::unordered_map;
+using std::vector;
+// using std::unordered_map;
 
 extern map<Key, Key> latest_order_id_for_customer;
 extern map<Key, int> latest_order_id_for_district;
@@ -47,7 +45,7 @@ extern unordered_map<Key, int> next_order_id_for_district;
 extern map<Key, int> item_for_order_line;
 extern map<Key, int> order_line_number;
 
-extern vector<Key>* involed_customers;
+extern vector<Key> *involed_customers;
 
 extern pthread_mutex_t mutex_;
 extern pthread_mutex_t mutex_for_item;
@@ -55,53 +53,50 @@ extern pthread_mutex_t mutex_for_item;
 #define ORDER_LINE_NUMBER 10
 
 class Configuration {
- public:
-  Configuration(int node_id, const string& filename);
+  public:
+    Configuration(int node_id, const string &filename);
 
-  // Returns the node_id of the partition at which 'key' is stored.
-  int LookupPartition(const Key& key) const;
-  int LookupPartition(const int& key) const;
+    // Returns the node_id of the partition at which 'key' is stored.
+    int LookupPartition(const Key &key) const;
+    int LookupPartition(const int &key) const;
 
-  inline int RandomDCNode()
-	{
-      	int index = abs(rand()) %  num_partitions; 
-		return this_group[index]->node_id; 
-	}
+    inline int RandomDCNode() {
+        int index = abs(rand()) % num_partitions;
+        return this_group[index]->node_id;
+    }
 
-  inline int RandomPartition()
-	{
-      	return abs(rand()) %  num_partitions; 
-	}
-					
-  inline int NodePartition(int node_id)
-	{ return all_nodes[node_id]->partition_id; }
+    inline int RandomPartition() { return abs(rand()) % num_partitions; }
 
-  inline int PartLocalNode(int partition_id)
-	{ return part_local_node[partition_id];  }
+    inline int NodePartition(int node_id) {
+        return all_nodes[node_id]->partition_id;
+    }
 
-  // Dump the current config into the file in key=value format.
-  // Returns true when success.
-  bool WriteToFile(const string& filename) const;
+    inline int PartLocalNode(int partition_id) {
+        return part_local_node[partition_id];
+    }
 
-  void InitInfo();
+    // Dump the current config into the file in key=value format.
+    // Returns true when success.
+    bool WriteToFile(const string &filename) const;
 
-  // This node's node_id.
-  int this_node_id;
-  int this_node_partition;
-  int this_dc_id;
-  Node* this_node;
-  vector<Node*> this_group;
-  vector<Node*> this_dc;
-  int* part_local_node;
-  int num_partitions;
+    void InitInfo();
 
-  map<int, Node*> all_nodes;
+    // This node's node_id.
+    int this_node_id;
+    int this_node_partition;
+    int this_dc_id;
+    Node *this_node;
+    vector<Node *> this_group;
+    vector<Node *> this_dc;
+    int *part_local_node;
+    int num_partitions;
 
- private:
-  // TODO(alex): Comments.
-  void ProcessConfigLine(char key[], char value[]);
-  int ReadFromFile(const string& filename);
+    map<int, Node *> all_nodes;
+
+  private:
+    // TODO(alex): Comments.
+    void ProcessConfigLine(char key[], char value[]);
+    int ReadFromFile(const string &filename);
 };
 
-#endif  // _DB_COMMON_CONFIGURATION_H_
-
+#endif // _DB_COMMON_CONFIGURATION_H_
