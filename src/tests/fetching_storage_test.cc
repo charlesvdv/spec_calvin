@@ -7,30 +7,25 @@
 
 #include "common/testing.h"
 
-
 TEST(FetchingStorageTest) {
-  system("rm ../db/storage/*");
-  FetchingStorage* storage = FetchingStorage::BuildStorage();
-  Key key = bytes("1");
-  Value value = bytes("value");
-  Value* result;
-  double wait_time;
-  EXPECT_FALSE(storage->Prefetch(key, &wait_time));
-  EXPECT_TRUE(storage->PutObject(key, &value));
-  result = storage->ReadObject(key);
-  EXPECT_EQ(value, *result);
-  EXPECT_TRUE(storage->Unfetch(key));
-  sleep(1);
-  EXPECT_TRUE(storage->Prefetch(key, &wait_time));
-  sleep(1);
-  result = storage->ReadObject(key);
-  EXPECT_EQ(value, *result);
-  EXPECT_TRUE(storage->Unfetch(key));
-  END;
+    system("rm ../db/storage/*");
+    FetchingStorage *storage = FetchingStorage::BuildStorage();
+    Key key = bytes("1");
+    Value value = bytes("value");
+    Value *result;
+    double wait_time;
+    EXPECT_FALSE(storage->Prefetch(key, &wait_time));
+    EXPECT_TRUE(storage->PutObject(key, &value));
+    result = storage->ReadObject(key);
+    EXPECT_EQ(value, *result);
+    EXPECT_TRUE(storage->Unfetch(key));
+    sleep(1);
+    EXPECT_TRUE(storage->Prefetch(key, &wait_time));
+    sleep(1);
+    result = storage->ReadObject(key);
+    EXPECT_EQ(value, *result);
+    EXPECT_TRUE(storage->Unfetch(key));
+    END;
 }
 
-int main(int argc, char** argv) {
-  FetchingStorageTest();
-}
-
-
+int main(int argc, char **argv) { FetchingStorageTest(); }

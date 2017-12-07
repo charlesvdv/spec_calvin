@@ -18,23 +18,23 @@
 //#define SAMPLE_RATE 50
 #define THROUGHPUT_SIZE 500
 
-#include "scheduler/scheduler.h"
-#include "common/utils.h"
-#include "proto/txn.pb.h"
-#include "proto/message.pb.h"
 #include "common/configuration.h"
+#include "common/utils.h"
+#include "proto/message.pb.h"
+#include "proto/txn.pb.h"
+#include "scheduler/scheduler.h"
 
 using std::deque;
-using std::set;
 using std::pair;
+using std::set;
 
 namespace zmq {
 class socket_t;
 class message_t;
-}
+} // namespace zmq
 using zmq::socket_t;
 
-//class Configuration;
+// class Configuration;
 class Connection;
 class DeterministicLockManager;
 class Storage;
@@ -44,73 +44,74 @@ class Client;
 // #define PREFETCHING
 
 class DeterministicScheduler : public Scheduler {
- public:
-  DeterministicScheduler(Configuration* conf, Connection* batch_connection, Storage* storage,
-		  const Application* application, AtomicQueue<TxnProto*>* input_queue, Client* client, int queue_mode);
-  virtual ~DeterministicScheduler();
-  void StopRunning(){
-	deconstructor_invoked_ = true;
-    pthread_join(worker_thread_, NULL);
-  }
+  public:
+    DeterministicScheduler(Configuration *conf, Connection *batch_connection,
+                           Storage *storage, const Application *application,
+                           AtomicQueue<TxnProto *> *input_queue, Client *client,
+                           int queue_mode);
+    virtual ~DeterministicScheduler();
+    void StopRunning() {
+        deconstructor_invoked_ = true;
+        pthread_join(worker_thread_, NULL);
+    }
 
- private:
-  // Function for starting main loops in a separate pthreads.
-  static void* RunWorkerThread(void* arg);
-  
-  //static void* LockManagerThread(void* arg);
+  private:
+    // Function for starting main loops in a separate pthreads.
+    static void *RunWorkerThread(void *arg);
 
-  void SendTxnPtr(socket_t* socket, TxnProto* txn);
-  TxnProto* GetTxnPtr(socket_t* socket, zmq::message_t* msg);
+    // static void* LockManagerThread(void* arg);
 
-  // Configuration specifying node & system settings.
-  Configuration* configuration_;
+    void SendTxnPtr(socket_t *socket, TxnProto *txn);
+    TxnProto *GetTxnPtr(socket_t *socket, zmq::message_t *msg);
 
-  // Thread contexts and their associated Connection objects.
-  pthread_t worker_thread_;
-  Connection* thread_connection_;
+    // Configuration specifying node & system settings.
+    Configuration *configuration_;
 
-  //pthread_t lock_manager_thread_;
-  // Connection for receiving txn batches from sequencer.
-  Connection* batch_connection_;
+    // Thread contexts and their associated Connection objects.
+    pthread_t worker_thread_;
+    Connection *thread_connection_;
 
-  // Storage layer used in application execution.
-  Storage* storage_;
-  
-  // Application currently being run.
-  const Application* application_;
+    // pthread_t lock_manager_thread_;
+    // Connection for receiving txn batches from sequencer.
+    Connection *batch_connection_;
 
-  AtomicQueue<TxnProto*>* to_lock_txns;
+    // Storage layer used in application execution.
+    Storage *storage_;
 
-  // Client
-  Client* client_;
+    // Application currently being run.
+    const Application *application_;
 
+    AtomicQueue<TxnProto *> *to_lock_txns;
 
-  // The per-node lock manager tracks what transactions have temporary ownership
-  // of what database objects, allowing the scheduler to track LOCAL conflicts
-  // and enforce equivalence to transaction orders.
-  DeterministicLockManager* lock_manager_;
+    // Client
+    Client *client_;
 
-  // Queue of transaction ids of transactions that have acquired all locks that
-  // they have requested.
-  std::deque<TxnProto*>* ready_txns_;
+    // The per-node lock manager tracks what transactions have temporary
+    // ownership of what database objects, allowing the scheduler to track LOCAL
+    // conflicts and enforce equivalence to transaction orders.
+    DeterministicLockManager *lock_manager_;
 
-  // Sockets for communication between main scheduler thread and worker threads.
-//  socket_t* requests_out_;
-//  socket_t* requests_in_;
-//  socket_t* responses_out_[NUM_THREADS];
-//  socket_t* responses_in_;
+    // Queue of transaction ids of transactions that have acquired all locks
+    // that they have requested.
+    std::deque<TxnProto *> *ready_txns_;
 
-  AtomicQueue<MessageProto>* message_queue;
-  
-  int queue_mode_;
-  int num_threads;
-  int64 committed;
-  int pending_txns;
+    // Sockets for communication between main scheduler thread and worker
+    // threads.
+    //  socket_t* requests_out_;
+    //  socket_t* requests_in_;
+    //  socket_t* responses_out_[NUM_THREADS];
+    //  socket_t* responses_in_;
+
+    AtomicQueue<MessageProto> *message_queue;
+
+    int queue_mode_;
+    int num_threads;
+    int64 committed;
+    int pending_txns;
 
   public:
-  	  bool deconstructor_invoked_ = false;
-      double throughput[THROUGHPUT_SIZE];
-      double abort[THROUGHPUT_SIZE];
-
+    bool deconstructor_invoked_ = false;
+    double throughput[THROUGHPUT_SIZE];
+    double abort[THROUGHPUT_SIZE];
 };
-#endif  // _DB_SCHEDULER_DETERMINISTIC_SCHEDULER_H_
+#endif // _DB_SCHEDULER_DETERMINISTIC_SCHEDULER_H_

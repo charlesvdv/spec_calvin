@@ -6,33 +6,34 @@
 #include "common/testing.h"
 #include "common/utils.h"
 
-int main(int argc, char** argv) {
-  Configuration* config =
-    new Configuration(0, "common/configuration_test_one_node.conf");
-  CollapsedVersionedStorage* storage = new CollapsedVersionedStorage();
-  TPCC* tpcc = new TPCC();
+int main(int argc, char **argv) {
+    Configuration *config =
+        new Configuration(0, "common/configuration_test_one_node.conf");
+    CollapsedVersionedStorage *storage = new CollapsedVersionedStorage();
+    TPCC *tpcc = new TPCC();
 
-  TPCC().InitializeStorage(storage, config);
+    TPCC().InitializeStorage(storage, config);
 
-  for (int i = 0; i < 100000; i++) {
-    TPCCArgs args;
-    args.set_system_time(GetTime());
-    args.set_multipartition(false);
-    string args_string;
-    args.SerializeToString(&args_string);
-    TxnProto* txn = tpcc->NewTxn(0, TPCC::NEW_ORDER, args_string, config);
-    txn->add_readers(0);
-    txn->add_writers(0);
+    for (int i = 0; i < 100000; i++) {
+        TPCCArgs args;
+        args.set_system_time(GetTime());
+        args.set_multipartition(false);
+        string args_string;
+        args.SerializeToString(&args_string);
+        TxnProto *txn = tpcc->NewTxn(0, TPCC::NEW_ORDER, args_string, config);
+        txn->add_readers(0);
+        txn->add_writers(0);
 
-    StorageManager* manager = new StorageManager(config, NULL, storage, txn);
+        StorageManager *manager =
+            new StorageManager(config, NULL, storage, txn);
 
-    tpcc->Execute(txn, manager);
+        tpcc->Execute(txn, manager);
 
-    delete manager;
-    delete txn;
-  }
+        delete manager;
+        delete txn;
+    }
 
-  delete tpcc;
-  delete storage;
-  delete config;
+    delete tpcc;
+    delete storage;
+    delete config;
 }

@@ -7,8 +7,8 @@
 
 #include "applications/microbenchmark.h"
 #include "applications/tpcc.h"
-#include "common/utils.h"
 #include "common/testing.h"
+#include "common/utils.h"
 
 using std::set;
 /*
@@ -101,47 +101,47 @@ TEST(LocksReleasedOutOfOrder) {
 */
 
 TEST(ThroughputTest) {
-  deque<TxnProto*> ready_txns;
-  Configuration config(0, "common/configuration_test_one_node.conf");
-  DeterministicLockManager lm(&ready_txns, &config);
-  vector<TxnProto*> txns;
+    deque<TxnProto *> ready_txns;
+    Configuration config(0, "common/configuration_test_one_node.conf");
+    DeterministicLockManager lm(&ready_txns, &config);
+    vector<TxnProto *> txns;
 
-  TPCC tpcc;
-  TPCCArgs args;
-  args.set_system_time(GetTime());
-  args.set_multipartition(false);
-  string args_string;
-  args.SerializeToString(&args_string);
+    TPCC tpcc;
+    TPCCArgs args;
+    args.set_system_time(GetTime());
+    args.set_multipartition(false);
+    string args_string;
+    args.SerializeToString(&args_string);
 
-  for (int i = 0; i < 100000; i++) {
-//    txns.push_back(new TxnProto());
-//    for (int j = 0; j < 10; j++)
-//      txns[i]->add_read_write_set(IntToString(j * 1000 + rand() % 1000));
-    txns.push_back(tpcc.NewTxn(i, TPCC::NEW_ORDER, args_string, NULL));
-  }
-
-  double start = GetTime();
-
-  int next = 0;
-  for (int i = 0; i < 1000; i++) {
-    for (int j = 0; j < 100; j++)
-      lm.Lock(txns[next++]);
-
-    while (ready_txns.size() > 0) {
-      TxnProto* txn = ready_txns.front();
-      ready_txns.pop_front();
-      lm.Release(txn);
+    for (int i = 0; i < 100000; i++) {
+        //    txns.push_back(new TxnProto());
+        //    for (int j = 0; j < 10; j++)
+        //      txns[i]->add_read_write_set(IntToString(j * 1000 + rand() %
+        //      1000));
+        txns.push_back(tpcc.NewTxn(i, TPCC::NEW_ORDER, args_string, NULL));
     }
-  }
 
-  cout << 100000.0 / (GetTime() - start) << " txns/sec\n";
+    double start = GetTime();
 
-  END;
+    int next = 0;
+    for (int i = 0; i < 1000; i++) {
+        for (int j = 0; j < 100; j++)
+            lm.Lock(txns[next++]);
+
+        while (ready_txns.size() > 0) {
+            TxnProto *txn = ready_txns.front();
+            ready_txns.pop_front();
+            lm.Release(txn);
+        }
+    }
+
+    cout << 100000.0 / (GetTime() - start) << " txns/sec\n";
+
+    END;
 }
 
-int main(int argc, char** argv) {
-//  SimpleLockingTest();
-//  LocksReleasedOutOfOrder();
-  ThroughputTest();
+int main(int argc, char **argv) {
+    //  SimpleLockingTest();
+    //  LocksReleasedOutOfOrder();
+    ThroughputTest();
 }
-

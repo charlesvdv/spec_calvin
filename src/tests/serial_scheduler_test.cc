@@ -4,10 +4,6 @@
 
 #include "common/testing.h"
 
-TEST(SerialSchedulerTest) {
-  END;
-}
+TEST(SerialSchedulerTest) { END; }
 
-int main() {
-  SerialSchedulerTest();
-}
+int main() { SerialSchedulerTest(); }

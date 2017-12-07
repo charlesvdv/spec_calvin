@@ -6,11 +6,6 @@
 
 #include "common/testing.h"
 
-TEST(SequencerTest) {
-  END;
-}
+TEST(SequencerTest) { END; }
 
-int main(int argc, char** argv) {
-  SequencerTest();
-}
-
+int main(int argc, char **argv) { SequencerTest(); }

@@ -24,8 +24,8 @@
 
 #include <tr1/unordered_map>
 //#include <unordered_map>
-#include <vector>
 #include "proto/tpcc_args.pb.h"
+#include <vector>
 
 #include "common/types.h"
 
@@ -40,55 +40,53 @@ class Storage;
 class TxnProto;
 
 class StorageManager {
- public:
-  // TODO(alex): Document this class correctly.
-  StorageManager(Configuration* config, Connection* connection,
-                 Storage* actual_storage, TxnProto* txn);
+  public:
+    // TODO(alex): Document this class correctly.
+    StorageManager(Configuration *config, Connection *connection,
+                   Storage *actual_storage, TxnProto *txn);
 
-  ~StorageManager();
+    ~StorageManager();
 
-  Value* ReadObject(const Key& key, int& whatever);
-  bool PutObject(const Key& key, Value* value);
-  bool DeleteObject(const Key& key);
+    Value *ReadObject(const Key &key, int &whatever);
+    bool PutObject(const Key &key, Value *value);
+    bool DeleteObject(const Key &key);
 
-  void HandleReadResult(const MessageProto& message);
-  bool ReadyToExecute();
-  void Init() {};
+    void HandleReadResult(const MessageProto &message);
+    bool ReadyToExecute();
+    void Init(){};
 
-  Storage* GetStorage() { return actual_storage_; }
-  TxnProto* get_txn() { return txn_;}
-  bool ShouldExec() { return true;}
-  inline TPCCArgs* get_args() { return tpcc_args;}
+    Storage *GetStorage() { return actual_storage_; }
+    TxnProto *get_txn() { return txn_; }
+    bool ShouldExec() { return true; }
+    inline TPCCArgs *get_args() { return tpcc_args; }
 
-  // Set by the constructor, indicating whether 'txn' involves any writes at
-  // this node.
-  bool writer;
+    // Set by the constructor, indicating whether 'txn' involves any writes at
+    // this node.
+    bool writer;
 
-// private:
-  friend class DeterministicScheduler;
+    // private:
+    friend class DeterministicScheduler;
 
-  // Pointer to the configuration object for this node.
-  Configuration* configuration_;
+    // Pointer to the configuration object for this node.
+    Configuration *configuration_;
 
-  // A Connection object that can be used to send and receive messages.
-  Connection* connection_;
+    // A Connection object that can be used to send and receive messages.
+    Connection *connection_;
 
-  // Storage layer that *actually* stores data objects on this node.
-  Storage* actual_storage_;
+    // Storage layer that *actually* stores data objects on this node.
+    Storage *actual_storage_;
 
-  // Transaction that corresponds to this instance of a StorageManager.
-  TxnProto* txn_;
+    // Transaction that corresponds to this instance of a StorageManager.
+    TxnProto *txn_;
 
-  // Local copy of all data objects read/written by 'txn_', populated at
-  // StorageManager construction time.
-  //
-  // TODO(alex): Should these be pointers to reduce object copying overhead?
-  unordered_map<Key, Value*> objects_;
+    // Local copy of all data objects read/written by 'txn_', populated at
+    // StorageManager construction time.
+    //
+    // TODO(alex): Should these be pointers to reduce object copying overhead?
+    unordered_map<Key, Value *> objects_;
 
-  vector<Value*> remote_reads_;
-  TPCCArgs* tpcc_args;
-
+    vector<Value *> remote_reads_;
+    TPCCArgs *tpcc_args;
 };
 
-#endif  // _DB_BACKEND_STORAGE_MANAGER_H_
-
+#endif // _DB_BACKEND_STORAGE_MANAGER_H_
