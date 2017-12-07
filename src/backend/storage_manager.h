@@ -34,7 +34,7 @@
 #include "proto/tpcc_args.pb.h"
 #include "proto/txn.pb.h"
 
-using std::tr1::unordered_map;
+using std::unordered_map;
 using std::vector;
 
 class Configuration;

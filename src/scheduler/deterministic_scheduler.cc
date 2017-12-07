@@ -43,7 +43,7 @@ extern LatencyUtils latency_util;
 using std::map;
 using std::pair;
 using std::string;
-using std::tr1::unordered_map;
+using std::unordered_map;
 using zmq::socket_t;
 
 static void DeleteTxnPtr(void *data, void *hint) { free(data); }

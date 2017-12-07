@@ -19,16 +19,16 @@
 #include <tr1/unordered_map>
 #include <unistd.h>
 #include <vector>
-//#include <unordered_map>
+#include <unordered_map>
 
 #include "common/logging.h"
 #include "common/types.h"
 
 using namespace std;
 using std::string;
-using std::tr1::unordered_map;
+using std::unordered_map;
 using std::vector;
-// using std::unordered_map;
+using std::unordered_map;
 
 // Queue modes
 #define NORMAL_QUEUE 1

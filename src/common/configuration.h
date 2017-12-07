@@ -24,18 +24,17 @@
 #include <map>
 #include <string>
 #include <vector>
-//#include <unordered_map>
+#include <unordered_map>
 #include <pthread.h>
-#include <tr1/unordered_map>
 
 #include "common/types.h"
 #include "common/utils.h"
 
 using std::map;
 using std::string;
-using std::tr1::unordered_map;
+using std::unordered_map;
 using std::vector;
-// using std::unordered_map;
+using std::unordered_map;
 
 extern map<Key, Key> latest_order_id_for_customer;
 extern map<Key, int> latest_order_id_for_district;

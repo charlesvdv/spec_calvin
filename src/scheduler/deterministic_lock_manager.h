@@ -17,7 +17,7 @@
 
 // using std::unordered_map;
 using std::deque;
-using std::tr1::unordered_map;
+using std::unordered_map;
 
 #define TABLE_SIZE 1000000
 
