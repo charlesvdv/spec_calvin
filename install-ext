@@ -5,12 +5,14 @@
 mkdir ext
 cd ext
 
+ZOOKEEPER_VERSION="3.4.11"
+
 #zookeeper
-wget http://apache.org/dist/zookeeper/zookeeper-3.4.6/zookeeper-3.4.6.tar.gz
-tar xzf zookeeper-3.4.6.tar.gz
-rm zookeeper-3.4.6.tar.gz
-mv zookeeper-3.4.6/src/c zookeeper
-rm -fr zookeeper-3.4.6
+wget "http://apache.org/dist/zookeeper/zookeeper-$ZOOKEEPER_VERSION/zookeeper-$ZOOKEEPER_VERSION.tar.gz"
+tar xzf "zookeeper-$ZOOKEEPER_VERSION.tar.gz"
+rm "zookeeper-$ZOOKEEPER_VERSION.tar.gz"
+mv "zookeeper-$ZOOKEEPER_VERSION/src/c" zookeeper
+rm -fr "zookeeper-$ZOOKEEPER_VERSION"
 cd zookeeper
 ./configure --prefix=$PWD
 make -j7
@@ -25,7 +27,7 @@ make -j7
 cd ..
 
 # googletest
-wget http://pkgs.fedoraproject.org/repo/pkgs/gtest/gtest-1.6.0.zip/4577b49f2973c90bf9ba69aa8166b786/gtest-1.6.0.zip 
+wget http://pkgs.fedoraproject.org/repo/pkgs/gtest/gtest-1.6.0.zip/4577b49f2973c90bf9ba69aa8166b786/gtest-1.6.0.zip
 unzip gtest-1.6.0.zip
 rm gtest-1.6.0.zip
 mv gtest-1.6.0 googletest
@@ -36,7 +38,7 @@ cd ..
 
 
 # zeromq
-wget https://archive.org/download/zeromq_2.1.11/zeromq-2.1.11.tar.gz 
+wget https://archive.org/download/zeromq_2.1.11/zeromq-2.1.11.tar.gz
 tar xzf zeromq-2.1.11.tar.gz
 rm zeromq-2.1.11.tar.gz
 mv zeromq-2.1.11 zeromq
@@ -46,6 +48,3 @@ cd zeromq
 make -j7
 make install
 cd ..
-
-
-
