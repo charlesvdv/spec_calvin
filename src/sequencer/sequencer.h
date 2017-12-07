@@ -113,7 +113,6 @@ class Sequencer {
     Configuration *configuration_;
 
     // Connection for sending and receiving protocol messages.
-    // Connection for sending and receiving protocol messages.
     Connection *connection_;
 
     ConnectionMultiplexer *multiplexer_;

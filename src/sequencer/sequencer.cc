@@ -95,6 +95,7 @@ void Sequencer::FindParticipatingNodes(const TxnProto &txn, set<int> *nodes) {
 }
 
 #ifdef PREFETCHING
+// Unused.
 double PrefetchAll(Storage *storage, TxnProto *txn) {
     double max_wait_time = 0;
     double wait_time = 0;

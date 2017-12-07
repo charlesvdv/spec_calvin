@@ -32,7 +32,7 @@ message TxnProto {
 
   // Keys of objects read AND modified by this transaction.
   repeated bytes read_write_set = 22;
-  
+
   // Keys of objects read (but not modified) by this transaction.
   repeated bytes pred_read_set = 200;
 
@@ -48,7 +48,7 @@ message TxnProto {
   // based on 'txn_type'.
   optional bytes arg = 23;
 
-  required int64 seed = 24;	
+  required int64 seed = 24;
   optional int64 start_time = 25;
   // Transaction status.
   //
@@ -65,4 +65,3 @@ message TxnProto {
   repeated int32 readers = 40;
   repeated int32 writers = 41;
 }
-
