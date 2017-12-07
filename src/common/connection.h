@@ -24,8 +24,8 @@
 using std::map;
 using std::set;
 using std::string;
+using std::unordered_map;
 using std::vector;
-using std::tr1::unordered_map;
 
 class Configuration;
 
@@ -47,7 +47,7 @@ class ConnectionMultiplexer {
   // the channel name is already in use, in which case NULL is returned. The
   // caller (not the multiplexer) owns of the newly created Connection object.
   Connection* NewConnection(const string& channel);
-  
+
   Connection* NewConnection(const string& channel, AtomicQueue<MessageProto>** aa);
 
   Connection* NewConnection(const string& channel, AtomicQueue<MessageProto>** aa, AtomicQueue<MessageProto>** bb);
@@ -94,9 +94,9 @@ class ConnectionMultiplexer {
   // Sockets for forwarding messages to Connections. Keyed by channel
   // name. Type = ZMQ_PUSH.
   unordered_map<string, zmq::socket_t*> inproc_out_;
-  
+
   unordered_map<string, AtomicQueue<MessageProto>*> remote_result_;
-  
+
   unordered_map<string, AtomicQueue<MessageProto>*> link_unlink_queue_;
 
   AtomicQueue<MessageProto>* restart_queue;
@@ -111,9 +111,9 @@ class ConnectionMultiplexer {
   // Protects concurrent calls to NewConnection().
   pthread_mutex_t new_connection_mutex_;
   pthread_mutex_t remote_result_mutex_;
-  
+
   pthread_mutex_t* send_mutex_;
-  
+
   // Specifies a requested channel. Null if there is no outstanding new
   // connection request.
   const string* new_connection_channel_;
@@ -142,7 +142,7 @@ class Connection {
   // Sends 'message' to the Connection specified by
   // 'message.destination_node()' and 'message.destination_channel()'.
   void Send(const MessageProto& message);
-  
+
   void Send1(const MessageProto& message);
 
   // Send either local or remote

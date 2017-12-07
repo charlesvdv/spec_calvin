@@ -24,10 +24,8 @@
 #include <map>
 #include <string>
 #include <vector>
-//#include <unordered_map>
-#include <tr1/unordered_map>
+#include <unordered_map>
 #include <pthread.h>
-
 
 #include "common/types.h"
 #include "common/utils.h"
@@ -35,9 +33,8 @@
 
 using std::map;
 using std::string;
+using std::unordered_map;
 using std::vector;
-using std::tr1::unordered_map;
-//using std::unordered_map;
 
 extern map<Key, Key> latest_order_id_for_customer;
 extern map<Key, int> latest_order_id_for_district;
@@ -64,15 +61,15 @@ class Configuration {
 
   inline int RandomDCNode()
 	{
-      	int index = abs(rand()) %  num_partitions; 
-		return this_group[index]->node_id; 
+      	int index = abs(rand()) %  num_partitions;
+		return this_group[index]->node_id;
 	}
 
   inline int RandomPartition()
 	{
-      	return abs(rand()) %  num_partitions; 
+      	return abs(rand()) %  num_partitions;
 	}
-					
+
   inline int NodePartition(int node_id)
 	{ return all_nodes[node_id]->partition_id; }
 

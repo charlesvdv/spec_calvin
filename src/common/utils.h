@@ -20,19 +20,22 @@
 #include <iomanip>
 #include "proto/message.pb.h"
 #include <sstream>
-//#include <unordered_map>
+#include <string>
+#include <sys/time.h>
+#include <unistd.h>
+#include <vector>
+#include <unordered_map>
 
 #include "common/logging.h"
 #include "common/types.h"
 
 using namespace std;
 using std::string;
+using std::unordered_map;
 using std::vector;
-using std::tr1::unordered_map;
-//using std::unordered_map;
 
 // Queue modes
-#define CPU_NUM 8 
+#define CPU_NUM 8
 #define NORMAL_QUEUE 1
 #define SELF_QUEUE 2
 #define DIRECT_QUEUE 3

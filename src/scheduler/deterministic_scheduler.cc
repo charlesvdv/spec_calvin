@@ -42,7 +42,7 @@ extern LatencyUtils latency_util;
 
 using std::pair;
 using std::string;
-using std::tr1::unordered_map;
+using std::unordered_map;
 using zmq::socket_t;
 using std::map;
 

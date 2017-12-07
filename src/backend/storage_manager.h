@@ -29,9 +29,8 @@
 
 #include "common/types.h"
 
+using std::unordered_map;
 using std::vector;
-using std::tr1::unordered_map;
-//using std::unordered_map;
 
 class Configuration;
 class Connection;

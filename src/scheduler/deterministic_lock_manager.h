@@ -15,9 +15,8 @@
 #include "scheduler/lock_manager.h"
 #include "common/utils.h"
 
-//using std::unordered_map;
-using std::tr1::unordered_map;
 using std::deque;
+using std::unordered_map;
 
 #define TABLE_SIZE 1000000
 
@@ -62,7 +61,7 @@ class DeterministicLockManager {
     TxnProto* txn;  // Pointer to txn requesting the lock.
     LockMode mode;  // Specifies whether this is a read or write lock request.
   };
-  
+
   struct KeysList {
     KeysList(Key m, deque<LockRequest>* t) : key(m), locksrequest(t) {}
     Key key;
