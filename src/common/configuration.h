@@ -78,6 +78,7 @@ class Configuration {
     // Returns true when success.
     bool WriteToFile(const string &filename) const;
 
+
     void InitInfo();
 
     // This node's node_id.
@@ -91,6 +92,7 @@ class Configuration {
     int num_partitions;
 
     map<int, Node *> all_nodes;
+    map<int, vector<int>> nodes_by_partition;
 
   private:
     // TODO(alex): Comments.

@@ -5,7 +5,7 @@ UPPERC_DIR := SEQUENCER
 LOWERC_DIR := sequencer
 
 SEQUENCER_PROG :=
-SEQUENCER_SRCS := sequencer/sequencer.cc
+SEQUENCER_SRCS := sequencer/sequencer.cc sequencer/to-multicast.cc
 
 SRC_LINKED_OBJECTS :=
 TEST_LINKED_OBJECTS := $(PROTO_OBJS) $(COMMON_OBJS)

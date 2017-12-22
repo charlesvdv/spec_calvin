@@ -30,7 +30,9 @@ message MessageProto {
     CLIENT_PROPOSAL = 8;
     LEADER_PROPOSAL = 9;
     LEARNER_ACCEPT = 10;
-	LATENCY = 11;
+    LATENCY = 11;
+    RMULTICAST_TXN = 12;
+    TOMULTICAST_CLOCK_VOTE = 13;
   };
   required MessageType type = 9;
 
@@ -63,8 +65,8 @@ message MessageProto {
   // For (UN)LINK_CHANNEL messages, specifies the channel to be (un)linked
   // to the requesting Connection object.
   optional string channel_request = 1002;
-  
+
   optional int32 restart = 2001;
-  
+
   optional int64 txn_id = 2003;
 }

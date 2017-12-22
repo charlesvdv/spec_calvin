@@ -677,6 +677,7 @@ class MutexRW {
   private:
     friend class ReadLock;
     friend class WriteLock;
+    template<typename T> friend class AtomicVector;
     // Actual pthread rwlock wrapped by MutexRW class.
     pthread_rwlock_t mutex_;
 
@@ -888,6 +889,57 @@ class AtomicMap {
     // DISALLOW_COPY_AND_ASSIGN
     AtomicMap(const AtomicMap<K, V> &);
     AtomicMap &operator=(const AtomicMap<K, V> &);
+};
+
+// The container is quite a hack but it should support complex
+// action and in the same time, support easy thread safe function.
+template<typename T>
+class AtomicVector {
+public:
+    using iterator = typename std::vector<T>::iterator;
+
+    AtomicVector() {}
+    ~AtomicVector() {}
+
+    // Should only be used with `Unsafe*` function.
+    void lock_read() {
+        pthread_rwlock_rdlock(&mutex_.mutex_);
+    }
+
+    // Should only be used with `Unsafe*` function.
+    void lock_write() {
+        pthread_rwlock_wrlock(&mutex_.mutex_);
+    }
+
+    void unlock() {
+        pthread_rwlock_unlock(&mutex_.mutex_);
+    }
+
+    void unsafe_push(const T &val) {
+        vec_.push_back(val);
+    }
+
+    void push(const T &val) {
+        WriteLock l(&mutex_);
+        unsafe_push(val);
+    }
+
+    // iterator<input_iterator_tag, T> unsafe_begin() {
+    iterator unsafe_begin() {
+        return vec_.begin();
+    }
+
+    iterator unsafe_end() {
+        return vec_.end();
+    }
+
+    void unsafe_erase(iterator pos) {
+        vec_.erase(pos);
+    }
+
+private:
+    vector<T> vec_;
+    MutexRW mutex_;
 };
 
 #endif // _DB_COMMON_UTILS_H_

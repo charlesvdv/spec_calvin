@@ -64,4 +64,7 @@ message TxnProto {
   // Node ids of nodes that participate as readers and writers in this txn.
   repeated int32 readers = 40;
   repeated int32 writers = 41;
+
+  // Logical clock assigned to the transaction by TO-MULTICAST.
+  optional uint64 logical_clock = 42;
 }

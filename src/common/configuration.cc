@@ -36,6 +36,13 @@ void Configuration::InitInfo() {
             this_dc.push_back(all_nodes[i]);
         }
         all_partitions.insert(all_nodes[i]->partition_id);
+
+        auto searched_partition = nodes_by_partition.find(all_nodes[i]->partition_id);
+        if (searched_partition != nodes_by_partition.end()) {
+            searched_partition->second.push_back(all_nodes[i]->node_id);
+        } else {
+            nodes_by_partition.insert(make_pair(all_nodes[i]->partition_id, vector<int>{all_nodes[i]->node_id}));
+        }
     }
     num_partitions = all_partitions.size();
     part_local_node = new int[num_partitions];
