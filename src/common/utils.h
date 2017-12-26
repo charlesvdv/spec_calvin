@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <unordered_map>
 #include <vector>
+#include <functional>
 
 #include "common/logging.h"
 #include "common/types.h"
@@ -591,7 +592,7 @@ class Lock {
 
 template <typename T>
 class AtomicQueue {
-  public:
+public:
     AtomicQueue() {
         queue_.resize(256);
         size_ = 256;
@@ -654,7 +655,19 @@ class AtomicQueue {
         return false;
     }
 
-  private:
+    template<typename R>
+    R Reduce(std::function<R(T)> getter, std::function<R(R, R)> reducer) {
+        Lock f(&front_mutex_);
+        Lock b(&back_mutex_);
+
+        R result;
+        for(uint32 i = front_; i != back_; i = (i+1) % size_) {
+            result = reducer(result, getter(queue_[i]));
+        }
+        return result;
+    }
+
+private:
     vector<T> queue_; // Circular buffer containing elements.
     uint32 size_;     // Allocated size of queue_, not number of elements.
     uint32 front_;    // Offset of first (oldest) element.
@@ -969,57 +982,6 @@ class AtomicMap {
     // DISALLOW_COPY_AND_ASSIGN
     AtomicMap(const AtomicMap<K, V> &);
     AtomicMap &operator=(const AtomicMap<K, V> &);
-};
-
-// The container is quite a hack but it should support complex
-// action and in the same time, support easy thread safe function.
-template<typename T>
-class AtomicVector {
-public:
-    using iterator = typename std::vector<T>::iterator;
-
-    AtomicVector() {}
-    ~AtomicVector() {}
-
-    // Should only be used with `Unsafe*` function.
-    void lock_read() {
-        pthread_rwlock_rdlock(&mutex_.mutex_);
-    }
-
-    // Should only be used with `Unsafe*` function.
-    void lock_write() {
-        pthread_rwlock_wrlock(&mutex_.mutex_);
-    }
-
-    void unlock() {
-        pthread_rwlock_unlock(&mutex_.mutex_);
-    }
-
-    void unsafe_push(const T &val) {
-        vec_.push_back(val);
-    }
-
-    void push(const T &val) {
-        WriteLock l(&mutex_);
-        unsafe_push(val);
-    }
-
-    // iterator<input_iterator_tag, T> unsafe_begin() {
-    iterator unsafe_begin() {
-        return vec_.begin();
-    }
-
-    iterator unsafe_end() {
-        return vec_.end();
-    }
-
-    void unsafe_erase(iterator pos) {
-        vec_.erase(pos);
-    }
-
-private:
-    vector<T> vec_;
-    MutexRW mutex_;
 };
 
 #endif // _DB_COMMON_UTILS_H_
