@@ -27,15 +27,17 @@ class ConnectionMultiplexer;
 
 typedef unsigned long LogicalClockT;
 
-enum class TOMulticastState: unsigned {
+enum class TOMulticastState {
+    // Wait R-MULTICAST.
+    WaitingReliableMulticast,
     // state = q0.
-    WaitingGroupTimestamp = 1,
+    GroupTimestamp,
     // state = q1.
-    WaitingDispatching = 2,
+    InterPartitionVote,
     // state = q2.
-    WaitingSynchronisation = 4,
+    ReplicaSynchronisation,
     // state = q3.
-    HasFinalTimestamp = 8,
+    WaitingDecide,
 };
 
 class CompareTxn {
@@ -54,37 +56,38 @@ class TOMulticast {
 
         ~TOMulticast();
     private:
-        void RunClockHandler();
+        void RunThread();
 
-        // Helper to run RunClockHandler inside a thread.
-        static void *RunClockHandlerHelper(void *arg) {
-            reinterpret_cast<TOMulticast*>(arg)->RunClockHandler();
+        static void *RunThreadHelper(void *arg) {
+            reinterpret_cast<TOMulticast*>(arg)->RunThread();
             return NULL;
         }
 
-        void RunOperationDispatchingHandler();
+        // Receive messages received skeen channel.
+        void ReceiveMessages();
 
-        // Helper to run RunOperationDispatchingHandler inside a thread.
-        static void *RunOperationDispatchingHandlerHelper(void *arg) {
-            reinterpret_cast<TOMulticast*>(arg)->RunOperationDispatchingHandler();
-            return NULL;
-        }
-
+        // Helper function to dispatch any transactions with R-MULTICAST.
         void DispatchOperationWithReliableMulticast(TxnProto *txn);
+
+        // Get all nodes involved in a transactions (intra+inter partitions).
         vector<int> GetInvolvedNodes(TxnProto *txn);
+
+        // Get all partitions involved in a transactions.
         vector<int> GetInvolvedPartitions(TxnProto *txn);
 
+        // Get the smallest logical clock transactions which is not yet
+        // decided.
         LogicalClockT GetMinimumPendingClock();
 
+        // Helper to run consensus inside a partition.
         LogicalClockT RunTimestampingConsensus(TxnProto *txn);
         void RunClockSynchronisationConsensus(LogicalClockT clock);
 
-        void GetOperationAccordingToState(unsigned state, pair<TxnProto*, TOMulticastState> &message_info);
-
+        // Next logical clock that will be assigned.
         LogicalClockT logical_clock_;
 
         // Store transactions that are currently being ordered by the protocol.
-        AtomicVector<pair<TxnProto*, TOMulticastState>> pending_operations_;
+        AtomicQueue<pair<TxnProto*, TOMulticastState>> pending_operations_;
 
         // The key is the transaction id
         // Used to save transactions waiting to be receive the vote from
@@ -103,10 +106,7 @@ class TOMulticast {
 
         Connection *skeen_connection_;
 
-        // Ti^(cons) threads.
-        pthread_t clock_thread_;
-        // Combine Ti^(m) in only one thread.
-        pthread_t dispatch_thread_;
+        pthread_t thread_;
 
         bool destructor_invoked_;
 

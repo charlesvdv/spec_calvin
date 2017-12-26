@@ -6,8 +6,7 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
     destructor_invoked_ = false;
 
     // Create thread and launch them.
-    pthread_create(&clock_thread_, NULL, RunClockHandlerHelper, this);
-    pthread_create(&dispatch_thread_, NULL, RunOperationDispatchingHandlerHelper, this);
+    pthread_create(&thread_, NULL, RunThreadHelper, this);
 
     // Create custom connection.
     skeen_connection_ = multiplexer_->NewConnection("skeen");
@@ -25,8 +24,7 @@ TOMulticast::~TOMulticast() {
 }
 
 void TOMulticast::Send(TxnProto *txn) {
-    DispatchOperationWithReliableMulticast(txn);
-    pending_operations_.push(std::make_pair(txn, TOMulticastState::WaitingGroupTimestamp));
+    pending_operations_.Push(std::make_pair(txn, TOMulticastState::WaitingReliableMulticast));
 }
 
 // Get txns which are already decided.
@@ -43,106 +41,106 @@ vector<TxnProto*> TOMulticast::GetDecided() {
     return delivered;
 }
 
-void TOMulticast::RunClockHandler() {
+void TOMulticast::RunThread() {
     while(!destructor_invoked_) {
-        unsigned state_needed = (unsigned)(TOMulticastState::WaitingGroupTimestamp)
-            || (unsigned)(TOMulticastState::WaitingSynchronisation);
+        ReceiveMessages();
 
         pair<TxnProto*, TOMulticastState> txn_info;
-        GetOperationAccordingToState(state_needed, txn_info);
-        auto txn = txn_info.first;
-        auto txn_state = txn_info.second;
+        if (pending_operations_.Pop(&txn_info)) {
+            auto txn = txn_info.first;
+            auto txn_state = txn_info.second;
 
-        logical_clock_++;
+            switch(txn_state) {
+                case TOMulticastState::WaitingReliableMulticast:
+                    DispatchOperationWithReliableMulticast(txn);
+                    pending_operations_.Push(
+                            std::make_pair(txn, TOMulticastState::GroupTimestamp)
+                    );
+                    break;
+                case TOMulticastState::GroupTimestamp:
+                    {
+                        LogicalClockT decided_clock = RunTimestampingConsensus(txn);
+                        txn->set_logical_clock(decided_clock);
+                        pending_operations_.Push(make_pair(txn, TOMulticastState::InterPartitionVote));
+                        break;
+                    }
+                case TOMulticastState::InterPartitionVote:
+                    {
+                        vector<int> involved_nodes = GetInvolvedNodes(txn);
 
-        // TODO: line 2.5, we assume that the message has been R-DELIVERED
-        // inside this partition. But in reality, we need to wait until
-        // the txn has been delivered.
-
-        if (txn_state == TOMulticastState::WaitingGroupTimestamp) {
-            LogicalClockT decided_clock = RunTimestampingConsensus(txn);
-            txn->set_logical_clock(decided_clock);
-            pending_operations_.push(make_pair(txn, TOMulticastState::WaitingDispatching));
-        } else if (txn_state == TOMulticastState::WaitingSynchronisation) {
-            RunClockSynchronisationConsensus(txn->logical_clock());
-            pending_operations_.push(make_pair(txn, TOMulticastState::HasFinalTimestamp));
+                        for (int node_id: involved_nodes) {
+                            MessageProto msg;
+                            msg.set_destination_channel("skeen");
+                            msg.set_source_node(configuration_->this_node_id);
+                            msg.set_destination_node(node_id);
+                            msg.add_data(reinterpret_cast<const char *>(txn->logical_clock()));
+                            msg.set_type(MessageProto::TOMULTICAST_CLOCK_VOTE);
+                            skeen_connection_->Send(msg);
+                        }
+                        waiting_vote_operations_.insert(std::make_pair(txn->txn_id(), txn));
+                        break;
+                    }
+                case TOMulticastState::ReplicaSynchronisation:
+                    RunClockSynchronisationConsensus(txn->logical_clock());
+                    pending_operations_.Push(make_pair(txn, TOMulticastState::WaitingDecide));
+                    break;
+                default:
+                    LOG(logical_clock_, "Unknow TO-MULTICAST state!");
+            }
         }
     }
 }
 
-void TOMulticast::RunOperationDispatchingHandler() {
-    while(!destructor_invoked_) {
-        unsigned state_needed = (unsigned)(TOMulticastState::WaitingDispatching)
-            || (unsigned)(TOMulticastState::HasFinalTimestamp);
+void TOMulticast::ReceiveMessages() {
+    MessageProto rcv_msg;
+    while(skeen_connection_->GetMessage(&rcv_msg) && !destructor_invoked_) {
+        if (rcv_msg.type() == MessageProto::RMULTICAST_TXN) {
+            TxnProto *txn;
+            txn->ParseFromString(rcv_msg.data(0));
+            pending_operations_.Push(std::make_pair(txn, TOMulticastState::GroupTimestamp));
+        } else if (rcv_msg.type() == MessageProto::TOMULTICAST_CLOCK_VOTE) {
+            // TODO: verify if we always have txn_id in a received message or if we need to
+            // set it ourself.
+            LogicalClockT partition_vote = std::stoul(rcv_msg.data(0));
+            int partition_id = configuration_->NodePartition(rcv_msg.source_node());
 
-        pair<TxnProto*, TOMulticastState> txn_info;
-        GetOperationAccordingToState(state_needed, txn_info);
-        auto txn = txn_info.first;
-        auto txn_state = txn_info.second;
-
-        if (txn_state == TOMulticastState::WaitingDispatching) {
-            vector<int> involved_nodes = GetInvolvedNodes(txn);
-
-            for (int node_id: involved_nodes) {
-                MessageProto msg;
-                msg.set_destination_channel("skeen");
-                msg.set_source_node(configuration_->this_node_id);
-                msg.set_destination_node(node_id);
-                msg.add_data(reinterpret_cast<const char *>(txn->logical_clock()));
-                msg.set_type(MessageProto::TOMULTICAST_CLOCK_VOTE);
-                skeen_connection_->Send(msg);
-            }
-            waiting_vote_operations_.insert(std::make_pair(txn->txn_id(), txn));
-        } else if (txn_state == TOMulticastState::HasFinalTimestamp) {
-            decided_operations_.push(txn);
-        }
-
-        MessageProto rcv_msg;
-        while(skeen_connection_->GetMessage(&rcv_msg) && !destructor_invoked_) {
-            if (rcv_msg.type() == MessageProto::RMULTICAST_TXN) {
-                TxnProto *txn;
-                txn->ParseFromString(rcv_msg.data(0));
-                pending_operations_.push(std::make_pair(txn, TOMulticastState::WaitingGroupTimestamp));
-            } else if (rcv_msg.type() == MessageProto::TOMULTICAST_CLOCK_VOTE) {
-                // TODO: verify if we always have txn_id in a received message or if we need to
-                // set it ourself.
-                assert(rcv_msg.has_txn_id());
-                auto search_votes = clock_votes_.find(rcv_msg.txn_id());
-                assert(search_votes != clock_votes_.end());
-
-                map<int, LogicalClockT> votes = search_votes->second;
-
-                // LogicalClockT partition_vote = static_cast<LogicalClockT>(rcv_msg.data(0));
-                LogicalClockT partition_vote = std::stoul(rcv_msg.data(0));
-                int partition_id = configuration_->NodePartition(rcv_msg.source_node());
-
+            assert(rcv_msg.has_txn_id());
+            auto txn_votes = clock_votes_.find(rcv_msg.txn_id());
+            if (txn_votes != clock_votes_.end()) {
+                map<int, LogicalClockT> votes = txn_votes->second;
                 votes[partition_id] = partition_vote;
+            } else {
+                map<int, LogicalClockT> votes;
+                votes[partition_id] = partition_vote;
+                clock_votes_[(int)rcv_msg.txn_id()] = votes;
             }
         }
+    }
 
-        // Check if we received all votes for an operation.
-        // If we received it, we can assign the final timestamp
-        // and pass to state = q2.
-        for (auto txn_info: waiting_vote_operations_) {
-            int txn_id = txn_info.first;
-            TxnProto *txn = txn_info.second;
+    // Check if we received all votes for an operation.
+    // If we received it, we can assign the final timestamp
+    // and pass to state = q2 (Synchronisation consensus).
+    for (auto txn_info: waiting_vote_operations_) {
+        int txn_id = txn_info.first;
+        TxnProto *txn = txn_info.second;
 
-            auto search_txn = clock_votes_.find(txn_id);
-            if (search_txn != clock_votes_.end()) {
-                map<int, LogicalClockT> votes = (*search_txn).second;
-                size_t partition_size = GetInvolvedPartitions(txn).size();
-                // We received all the votes for this transaction.
-                if (partition_size == votes.size()) {
-                    LogicalClockT max_vote = 0;
-                    for (auto vote: votes) {
-                        max_vote = std::max(max_vote, vote.second);
-                    }
-                    txn->set_logical_clock(max_vote);
-
-                    pending_operations_.push(make_pair(txn, TOMulticastState::WaitingSynchronisation));
-                    clock_votes_.erase(search_txn);
-                    waiting_vote_operations_.erase(txn_info.first);
+        auto search_txn = clock_votes_.find(txn_id);
+        if (search_txn != clock_votes_.end()) {
+            map<int, LogicalClockT> votes = (*search_txn).second;
+            size_t partition_size = GetInvolvedPartitions(txn).size();
+            // We received all the votes for this transaction.
+            if (partition_size == votes.size()) {
+                LogicalClockT max_vote = 0;
+                for (auto vote: votes) {
+                    max_vote = std::max(max_vote, vote.second);
                 }
+                txn->set_logical_clock(max_vote);
+
+                pending_operations_.Push(
+                    make_pair(txn, TOMulticastState::ReplicaSynchronisation)
+                );
+                clock_votes_.erase(search_txn);
+                waiting_vote_operations_.erase(txn_info.first);
             }
         }
     }
@@ -209,36 +207,21 @@ LogicalClockT TOMulticast::GetMinimumPendingClock() {
         min_clock = min(txn_info.second->logical_clock(), min_clock);
     }
 
-    // Checking `pending_operations_` queue.
-    unsigned state_filter = (unsigned)(TOMulticastState::WaitingDispatching)
-        || (unsigned)(TOMulticastState::WaitingSynchronisation);
-
-    pending_operations_.lock_read();
-    for (auto it = pending_operations_.unsafe_begin(); it < pending_operations_.unsafe_end(); it++) {
-        auto txn_info = *it;
-        if (((unsigned)txn_info.second & state_filter) > 0) {
-            min_clock = min(txn_info.first->logical_clock(), min_clock);
-        }
-    }
-    pending_operations_.unlock();
-
-    return min_clock;
-}
-
-void TOMulticast::GetOperationAccordingToState(unsigned state, pair<TxnProto*, TOMulticastState> &txn_info) {
-    while(true && !destructor_invoked_) {
-        pending_operations_.lock_write();
-        for (auto it = pending_operations_.unsafe_begin(); it < pending_operations_.unsafe_end(); it++) {
-            txn_info = *it;
-            if (((unsigned)txn_info.second & state) > 0) {
-                pending_operations_.unsafe_erase(it);
-                pending_operations_.unlock();
-                return;
+    std::function<LogicalClockT(pair<TxnProto*, TOMulticastState>)> getter =
+        [](pair<TxnProto*, TOMulticastState> a) {
+            auto txn = a.first;
+            auto txn_state = a.second;
+            if (txn_state == TOMulticastState::InterPartitionVote ||
+                    txn_state == TOMulticastState::ReplicaSynchronisation) {
+                return txn->logical_clock();
             }
-        }
-        pending_operations_.unlock();
-        Spin(0.2);
-    }
+            return std::numeric_limits<LogicalClockT>::max();
+        };
+    std::function<LogicalClockT(LogicalClockT, LogicalClockT)> reducer =
+        [](LogicalClockT acc, LogicalClockT a) {
+            return std::min(acc, a);
+        };
+    return std::min(min_clock, pending_operations_.Reduce(getter, reducer));
 }
 
 // Txn should be replicated in the same time.
