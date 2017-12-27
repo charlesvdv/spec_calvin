@@ -5,11 +5,13 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
     multiplexer_ = multiplexer_;
     destructor_invoked_ = false;
 
+    message_queues = new AtomicQueue<MessageProto>();
+
     // Create thread and launch them.
     pthread_create(&thread_, NULL, RunThreadHelper, this);
 
     // Create custom connection.
-    skeen_connection_ = multiplexer_->NewConnection("skeen");
+    skeen_connection_ = multiplexer_->NewConnection("skeen", &message_queues);
 
     // Create Paxos instance.
     // Connection *paxos_connection = multiplexer_->NewConnection("tomulticast-paxos");
@@ -235,4 +237,46 @@ void TOMulticast::RunClockSynchronisationConsensus(LogicalClockT log_clock) {
     // Taken from the genepi papers (tc).
     Spin(3);
     logical_clock_ = std::max(logical_clock_, log_clock);
+}
+
+TOMulticastSchedulerInterface::TOMulticastSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client) {
+    multicast_ = new TOMulticast(conf, multiplexer);
+    client_ = client;
+    configuration_ = conf;
+
+    connection_ = multiplexer->NewConnection("sequencer");
+
+    destructor_invoked_ = false;
+
+    // Create thread and launch them.
+    pthread_create(&thread_, NULL, RunClientHelper, this);
+}
+
+TOMulticastSchedulerInterface::~TOMulticastSchedulerInterface() {
+    delete multicast_;
+}
+
+void TOMulticastSchedulerInterface::RunClient() {
+    int batch_count_ = 0;
+    while(!destructor_invoked_) {
+        for (int i = 0; i < 10; i++) {
+            int tx_base = configuration_->this_node_id +
+                          configuration_->num_partitions * batch_count_;
+            int txn_id_offset = i;
+            TxnProto *txn;
+            client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
+            multicast_->Send(txn);
+        }
+
+        auto decided = multicast_->GetDecided();
+        for (auto it = decided.begin(); it < decided.end(); it++) {
+            MessageProto msg;
+            msg.set_destination_channel("scheduler_");
+            msg.set_type(MessageProto::TXN_BATCH);
+            msg.set_destination_node(configuration_->this_node_id);
+            msg.set_batch_number(batch_count_);
+            connection_->Send(msg);
+        }
+        batch_count_++;
+    }
 }

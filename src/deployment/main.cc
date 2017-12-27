@@ -20,6 +20,7 @@
 #include "scheduler/deterministic_scheduler.h"
 #include "scheduler/serial_scheduler.h"
 #include "sequencer/sequencer.h"
+#include "sequencer/to-multicast.h"
 
 //#define HOT 100
 
@@ -237,26 +238,36 @@ int main(int argc, char **argv) {
     }
 
     // Initialize sequencer component and start sequencer thread running.
-    Sequencer sequencer(&config, &multiplexer, client, storage, queue_mode);
+    // Sequencer sequencer(&config, &multiplexer, client, storage, queue_mode);
+    TOMulticastSchedulerInterface multicast(&config, &multiplexer, client);
     Connection *scheduler_connection = multiplexer.NewConnection("scheduler_");
 
+    AtomicQueue<TxnProto*> txns_queue;
     DeterministicScheduler *scheduler;
     if (argv[2][0] == 't') {
         scheduler = new DeterministicScheduler(
             &config, scheduler_connection, storage, new TPCC(),
-            sequencer.GetTxnsQueue(), client, queue_mode);
+            &txns_queue, client, queue_mode);
+        //scheduler = new DeterministicScheduler(
+            //&config, scheduler_connection, storage, new TPCC(),
+            //sequencer.GetTxnsQueue(), client, queue_mode);
     } else {
         scheduler = new DeterministicScheduler(
             &config, scheduler_connection, storage,
             new Microbenchmark(&config, config.num_partitions,
                                config.this_node_partition),
-            sequencer.GetTxnsQueue(), client, queue_mode);
+            &txns_queue, client, queue_mode);
+        //scheduler = new DeterministicScheduler(
+            //&config, scheduler_connection, storage,
+            //new Microbenchmark(&config, config.num_partitions,
+                               //config.this_node_partition),
+            //sequencer.GetTxnsQueue(), client, queue_mode);
     }
 
-    sequencer.WaitForStart();
+    //sequencer.WaitForStart();
     Spin(atoi(ConfigReader::Value("duration").c_str()));
     scheduler->StopRunning();
-    sequencer.output(scheduler);
+    //sequencer.output(scheduler);
     delete scheduler;
     delete scheduler_connection;
     return 0;
