@@ -20,6 +20,7 @@ ZEROMQ := $(EXTDIR)/zeromq
 PROTOB := $(EXTDIR)/protobuf
 GTEST  := $(EXTDIR)/googletest
 ZOOKPR := $(EXTDIR)/zookeeper
+UTIL-LINUX := $(EXTDIR)/util-linux
 
 # Executable for protocol buffers
 PROTOCEXE := $(PROTOB)/src/.libs/protoc
@@ -34,11 +35,11 @@ V = @
 
 # Set the compiler and compile-time loaded libraries
 CXX           := g++
-LDLIBRARYPATH := LD_LIBRARY_PATH=$(ZEROMQ)/src/.libs:$(PROTOB)/src/.libs:$(GTEST)/lib/.libs:$(ZOOKPR)/.libs
+LDLIBRARYPATH := LD_LIBRARY_PATH=$(ZEROMQ)/src/.libs:$(PROTOB)/src/.libs:$(GTEST)/lib/.libs:$(ZOOKPR)/.libs:$(UTIL-LINUX)/
 
 # For profiling (with gprof), this line should read 'PG = -pg'
 # For fast execution, this line should read 'PG ='.
-PG = 
+PG =
 
 # Set the flags for C++ to compile with (namely where to look for external
 # libraries) and the linker libraries (again to look in the ext/ library)
@@ -46,14 +47,15 @@ CXXFLAGS := -std=c++11 -g -MD $(PG) -I$(SRCDIR) -I$(OBJDIR) \
             -I$(ZEROMQ)/include \
             -I$(PROTOB)/src \
             -I$(GTEST)/include \
-            -I$(ZOOKPR)/include -I$(ZOOKPR)/generated
+            -I$(ZOOKPR)/include -I$(ZOOKPR)/generated \
+            -I$(UTIL-LINUX)/libuuid/src/
 CXXFLAGS += -Wall -Werror
 
-LDFLAGS := -lrt -lpthread $(PG) \
+LDFLAGS := -static -lrt -pthread $(PG) \
            -lprotobuf -L$(PROTOB)/src/.libs \
-           -lgtest -L$(GTEST)/lib/.libs \
+           -lgtest -L$(GTEST)/build \
            -lzookeeper_mt -L$(ZOOKPR)/.libs
-ZMQLDFLAGS := -lzmq -L$(ZEROMQ)/src/.libs
+ZMQLDFLAGS := -lzmq -L$(ZEROMQ)/src/.libs -luuid -L$(UTIL-LINUX)/.libs
 
 # Lists that the */Makefile.inc makefile fragments will add to
 OBJDIRS :=
@@ -65,7 +67,7 @@ all:
 	@mkdir -p $(STORE)
 	@echo + Ensuring Checkpoint Storage Layer Exists...
 	@mkdir -p $(CHKPNT)
-	
+
 # Makefile template so that the makefrags are far less redundant
 MAKEFILE_TEMPLATE := Makefile.template
 

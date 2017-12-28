@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # requires: autoconf, libtool, libreadline-dev
+set -e
 
-mkdir ext
+mkdir -p ext
 cd ext
 
 ZOOKEEPER_VERSION="3.4.11"
 
-#zookeeper
+# zookeeper
 wget "http://apache.org/dist/zookeeper/zookeeper-$ZOOKEEPER_VERSION/zookeeper-$ZOOKEEPER_VERSION.tar.gz"
 tar xzf "zookeeper-$ZOOKEEPER_VERSION.tar.gz"
 rm "zookeeper-$ZOOKEEPER_VERSION.tar.gz"
@@ -18,7 +19,7 @@ cd zookeeper
 make -j7
 cd ..
 
-# protobuf
+# # protobuf
 git clone https://github.com/google/protobuf.git
 cd protobuf
 ./autogen.sh
@@ -32,10 +33,10 @@ unzip gtest-1.6.0.zip
 rm gtest-1.6.0.zip
 mv gtest-1.6.0 googletest
 cd googletest
-./configure --prefix=$PWD
+mkdir -p build && cd build
+cmake ..
 make -j7
-cd ..
-
+cd ../..
 
 # zeromq
 wget https://archive.org/download/zeromq_2.1.11/zeromq-2.1.11.tar.gz
@@ -44,7 +45,16 @@ rm zeromq-2.1.11.tar.gz
 mv zeromq-2.1.11 zeromq
 cd zeromq
 ./autogen.sh
-./configure --prefix=$PWD
+./configure --prefix=$PWD --enable-static
 make -j7
-make install
 cd ..
+
+# util-linux
+wget https://www.kernel.org/pub/linux/utils/util-linux/v2.31/util-linux-2.31.1.tar.gz
+tar xzf util-linux-2.31.1.tar.gz
+rm util-linux-2.31.1.tar.gz
+mv util-linux-2.31.1 util-linux
+cd util-linux
+./autogen.sh
+./configure --enable-static
+make
