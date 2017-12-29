@@ -234,6 +234,7 @@ void DeployOne(int nodeID, const Node *node, const char *exec,
     } else if (pid < 0) {
         printf("Node %d forking failed\n", nodeID);
     } else {
+        std::cout << "NodeID: " << nodeID << " pid: " << pid << "\n";
         children_pids.push_back(pid);
         children_pipes.insert(std::pair<int, int>(pipefd[0], nodeID));
         close(pipefd[1]);
@@ -324,6 +325,7 @@ void Deploy(const Configuration &config, const char *exec) {
             num_fd -= erasing.size();
         }
     }
+
     // at the end of this while statement, either there was a user interrupt or
     // no components remain alive
 
@@ -338,7 +340,10 @@ void Deploy(const Configuration &config, const char *exec) {
 }
 
 // Handles CTRL-C and other terminating signals and dies gracefully.
-void TerminatingChildren(int sig) { end_cluster = true; }
+void TerminatingChildren(int sig) {
+    std::cout << "Terminating children with code: " << sig << "\n";
+    end_cluster = true;
+}
 
 // try to kill all remote processes spawned
 void KillRemote(const Configuration &config, const char *exec,

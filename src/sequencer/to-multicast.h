@@ -38,13 +38,13 @@ enum class TOMulticastState {
     // state = q2.
     ReplicaSynchronisation,
     // state = q3.
-    WaitingDecide,
+    // WaitingDecide,
 };
 
 class CompareTxn {
 public:
     bool operator()(TxnProto *a, TxnProto *b) {
-        return a->logical_clock() < b->logical_clock();
+        return a->logical_clock() > b->logical_clock();
     }
 };
 
@@ -54,6 +54,10 @@ public:
 
     void Send(TxnProto *message);
     vector<TxnProto*> GetDecided();
+
+    size_t GetPendingQueueSize() {
+        return pending_operations_.Size();
+    }
 
     ~TOMulticast();
 private:
@@ -84,6 +88,8 @@ private:
     LogicalClockT RunTimestampingConsensus(TxnProto *txn);
     void RunClockSynchronisationConsensus(LogicalClockT clock);
 
+    void UpdateClockVote(int txn_id, int partition_id, LogicalClockT vote);
+
     // Next logical clock that will be assigned.
     LogicalClockT logical_clock_;
 
@@ -101,6 +107,7 @@ private:
 
     // Store decided operation waiting to be TO-DELIVERED.
     priority_queue<TxnProto*, vector<TxnProto*>, CompareTxn> decided_operations_;
+    pthread_mutex_t decided_mutex_;
 
     Configuration *configuration_;
     ConnectionMultiplexer *multiplexer_;
@@ -112,8 +119,6 @@ private:
     bool destructor_invoked_;
 
     Paxos *paxos_;
-
-    AtomicQueue<MessageProto> *message_queues;
 };
 
 class TOMulticastSchedulerInterface {

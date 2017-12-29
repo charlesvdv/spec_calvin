@@ -39,7 +39,7 @@ void TPCC::NewTxn(int64 txn_id, int txn_type, Configuration *config,
     if (mp) {
         do {
             remote_node = config->RandomDCNode();
-        } while (config->all_nodes.size() > 1 &&
+        } while (config->this_group.size() > 1 &&
                  remote_node == config->this_node_id);
 
         do {
