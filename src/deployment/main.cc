@@ -251,23 +251,23 @@ int main(int argc, char **argv) {
         scheduler = new DeterministicScheduler(
             &config, scheduler_connection, storage, new TPCC(),
             &txns_queue, client, queue_mode);
-        //scheduler = new DeterministicScheduler(
-            //&config, scheduler_connection, storage, new TPCC(),
-            //sequencer.GetTxnsQueue(), client, queue_mode);
+        // scheduler = new DeterministicScheduler(
+            // &config, scheduler_connection, storage, new TPCC(),
+            // sequencer.GetTxnsQueue(), client, queue_mode);
     } else {
         scheduler = new DeterministicScheduler(
             &config, scheduler_connection, storage,
             new Microbenchmark(&config, config.num_partitions,
                                config.this_node_partition),
             &txns_queue, client, queue_mode);
-        //scheduler = new DeterministicScheduler(
-            //&config, scheduler_connection, storage,
-            //new Microbenchmark(&config, config.num_partitions,
-                               //config.this_node_partition),
-            //sequencer.GetTxnsQueue(), client, queue_mode);
+        // scheduler = new DeterministicScheduler(
+            // &config, scheduler_connection, storage,
+            // new Microbenchmark(&config, config.num_partitions,
+                               // config.this_node_partition),
+            // sequencer.GetTxnsQueue(), client, queue_mode);
     }
 
-    //sequencer.WaitForStart();
+    // sequencer.WaitForStart();
     Spin(atoi(ConfigReader::Value("duration").c_str()));
     scheduler->StopRunning();
     //sequencer.output(scheduler);

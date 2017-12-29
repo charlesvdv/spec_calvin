@@ -59,7 +59,10 @@ class Configuration {
     int LookupPartition(const int &key) const;
 
     inline int RandomDCNode() {
-        int index = abs(rand()) % num_partitions;
+        // int index = abs(rand()) % num_partitions;
+        int index = abs(rand()) % this_group.size();
+        // auto node = this_group[index];
+        // return node->node_id;
         return this_group[index]->node_id;
     }
 
