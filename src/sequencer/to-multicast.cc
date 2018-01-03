@@ -1,4 +1,5 @@
 #include "sequencer/to-multicast.h"
+#include <fstream>
 
 TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer) {
     configuration_ = conf;
@@ -17,6 +18,9 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
     // paxos_ = new Paxos(conf->this_group, conf->this_node, paxos_connection,
                        // conf->this_node_partition, conf->num_partitions,
                        // &batch_queue_);
+
+    string filename = "debug-" + std::to_string(configuration_->this_node_id) + ".txt";
+    debug_file_.open(filename, std::ios_base::app);
 }
 
 TOMulticast::~TOMulticast() {
@@ -38,7 +42,7 @@ vector<TxnProto*> TOMulticast::GetDecided() {
     LogicalClockT min_pending_clock = GetMinimumPendingClock();
 
     pthread_mutex_lock(&decided_mutex_);
-    while(!decided_operations_.empty()) {
+    while(!decided_operations_.empty() && !destructor_invoked_) {
         if (decided_operations_.top()->logical_clock() <= min_pending_clock) {
             delivered.push_back(decided_operations_.top());
             decided_operations_.pop();
@@ -53,15 +57,8 @@ vector<TxnProto*> TOMulticast::GetDecided() {
 void TOMulticast::RunThread() {
     Spin(0.5);
 
-    double time = GetTime();
     while(!destructor_invoked_) {
-        if (GetTime() > time + 1) {
-            std::cout << "pending size: " << pending_operations_.Size()
-                << " waiting vote size: " << waiting_vote_operations_.size()
-                << " decided size: " << decided_operations_.size() << "\n" << std::flush;
-            ReceiveMessages();
-            time = GetTime();
-        }
+        ReceiveMessages();
 
         pair<TxnProto*, TOMulticastState> txn_info;
         if (pending_operations_.Pop(&txn_info)) {
@@ -79,6 +76,7 @@ void TOMulticast::RunThread() {
                     {
                         logical_clock_++;
                         LogicalClockT decided_clock = RunTimestampingConsensus(txn);
+                        // logical_clock_ = max(decided_clock, logical_clock_);
                         txn->set_logical_clock(decided_clock);
                         pending_operations_.Push(make_pair(txn, TOMulticastState::InterPartitionVote));
                         break;
@@ -125,12 +123,15 @@ void TOMulticast::ReceiveMessages() {
             assert(rcv_msg.data_size() == 1);
             txn->ParseFromString(rcv_msg.data(0));
             pending_operations_.Push(std::make_pair(txn, TOMulticastState::GroupTimestamp));
+            // debug_file_ << "txn_id: " << txn->txn_id() << "\n";
         } else if (rcv_msg.type() == MessageProto::TOMULTICAST_CLOCK_VOTE) {
             LogicalClockT partition_vote = std::stoul(rcv_msg.data(0));
             int partition_id = configuration_->NodePartition(rcv_msg.source_node());
 
             assert(rcv_msg.has_txn_id());
             UpdateClockVote(rcv_msg.txn_id(), partition_id, partition_vote);
+        } else {
+            assert(false);
         }
     }
 
@@ -151,6 +152,7 @@ void TOMulticast::ReceiveMessages() {
                 for (auto vote: votes) {
                     max_vote = std::max(max_vote, vote.second);
                 }
+
                 txn->set_logical_clock(max_vote);
 
                 pending_operations_.Push(
@@ -170,6 +172,7 @@ void TOMulticast::UpdateClockVote(int txn_id, int partition_id, LogicalClockT vo
         // Should be the same but we don't have any consensus yet.
         // assert(partition_vote == votes[partition_id])
         votes[partition_id] = std::max(vote, votes[partition_id]);
+        txn_votes->second = votes;
     } else {
         map<int, LogicalClockT> votes;
         votes[partition_id] = vote;
@@ -179,15 +182,12 @@ void TOMulticast::UpdateClockVote(int txn_id, int partition_id, LogicalClockT vo
 
 void TOMulticast::DispatchOperationWithReliableMulticast(TxnProto *txn) {
     vector<int> involved_nodes = GetInvolvedNodes(txn);
-
-    bytes txn_data;
-    txn->SerializeToString(&txn_data);
     for (int node: involved_nodes) {
         MessageProto msg;
         msg.set_destination_channel("skeen");
         msg.set_source_node(configuration_->this_node_id);
         msg.set_destination_node(node);
-        msg.add_data(txn_data);
+        msg.add_data(txn->SerializeAsString());
         msg.set_type(MessageProto::RMULTICAST_TXN);
         skeen_connection_->Send(msg);
     }
@@ -201,7 +201,7 @@ vector<int> TOMulticast::GetInvolvedNodes(TxnProto *txn) {
             auto nodes = searched_partition->second;
             std::copy(nodes.begin(), nodes.end(), std::inserter(involved_nodes, involved_nodes.end()));
         } else {
-            assert(true);
+            assert(false);
         }
     }
     for (auto partition_writer: txn->writers()) {
@@ -210,12 +210,18 @@ vector<int> TOMulticast::GetInvolvedNodes(TxnProto *txn) {
             auto nodes = searched_partition->second;
             std::copy(nodes.begin(), nodes.end(), std::inserter(involved_nodes, involved_nodes.end()));
         } else {
-            assert(true);
+            assert(false);
         }
     }
     for (auto node: configuration_->this_group) {
-        if (node->node_id != configuration_->this_node_id) {
-            involved_nodes.insert(node->node_id);
+        involved_nodes.insert(node->node_id);
+    }
+
+    for (auto it = involved_nodes.begin(); it != involved_nodes.end(); ) {
+        if ((*it) == configuration_->this_node_id) {
+            it = involved_nodes.erase(it);
+        } else {
+            ++it;
         }
     }
     return vector<int>(involved_nodes.begin(), involved_nodes.end());
@@ -283,39 +289,47 @@ TOMulticastSchedulerInterface::TOMulticastSchedulerInterface(Configuration *conf
 
 TOMulticastSchedulerInterface::~TOMulticastSchedulerInterface() {
     destructor_invoked_ = true;
+
+    // Wait that the main loop is finished before deleting
+    // TOMulticast.
+    Spin(1);
     delete multicast_;
     delete connection_;
 }
 
 void TOMulticastSchedulerInterface::RunClient() {
     int batch_count_ = 0;
-    while(!destructor_invoked_) {
-        if (multicast_->GetPendingQueueSize() < 500) {
-            for (int i = 0; i < 10; i++) {
-                Spin(0.01);
-                int tx_base = configuration_->this_node_id +
-                              configuration_->num_partitions * batch_count_;
-                int txn_id_offset = i;
-                TxnProto *txn;
-                client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
-                multicast_->Send(txn);
-            }
 
-            auto decided = multicast_->GetDecided();
-            if (!decided.empty()) {
-                MessageProto msg;
-                msg.set_destination_channel("scheduler_");
-                msg.set_type(MessageProto::TXN_BATCH);
-                msg.set_destination_node(configuration_->this_node_id);
-                msg.set_batch_number(batch_count_);
-                for (auto it = decided.begin(); it < decided.end(); it++) {
-                    msg.add_data((*it)->SerializeAsString());
-                }
-                connection_->Send(msg);
-                batch_count_++;
-            }
-        } else {
-            Spin(0.02);
+    string filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
+    std::ofstream cache_file(filename, std::ios_base::app);
+
+    while(!destructor_invoked_) {
+        for (int i = 0; i < max_batch_size; i++) {
+            Spin(0.01);
+            int tx_base = configuration_->this_node_id +
+                          configuration_->num_partitions * batch_count_;
+            int txn_id_offset = i;
+            TxnProto *txn;
+            client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
+            multicast_->Send(txn);
         }
+
+        std::vector<TxnProto*> decided;
+        while (decided.empty()) {
+            decided = multicast_->GetDecided();
+            Spin(0.001);
+        }
+
+        MessageProto msg;
+        msg.set_destination_channel("scheduler_");
+        msg.set_type(MessageProto::TXN_BATCH);
+        msg.set_destination_node(configuration_->this_node_id);
+        msg.set_batch_number(batch_count_);
+        for (auto it = decided.begin(); it < decided.end(); it++) {
+            cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
+            msg.add_data((*it)->SerializeAsString());
+        }
+        connection_->Send(msg);
+        batch_count_++;
     }
 }

@@ -44,7 +44,11 @@ enum class TOMulticastState {
 class CompareTxn {
 public:
     bool operator()(TxnProto *a, TxnProto *b) {
-        return a->logical_clock() > b->logical_clock();
+        if (a->logical_clock() != b->logical_clock()) {
+            return a->logical_clock() > b->logical_clock();
+        } else {
+            return a->txn_id() < b->txn_id();
+        }
     }
 };
 
@@ -54,10 +58,6 @@ public:
 
     void Send(TxnProto *message);
     vector<TxnProto*> GetDecided();
-
-    size_t GetPendingQueueSize() {
-        return pending_operations_.Size();
-    }
 
     ~TOMulticast();
 private:
@@ -119,6 +119,8 @@ private:
     bool destructor_invoked_;
 
     Paxos *paxos_;
+
+    std::ofstream debug_file_;
 };
 
 class TOMulticastSchedulerInterface {
