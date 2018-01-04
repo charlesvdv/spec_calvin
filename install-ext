@@ -1,6 +1,9 @@
 #!/bin/bash
 
 # requires: autoconf, libtool, libreadline-dev
+
+# For grid5000
+# sudo-g5k apt-get install uuid-dev libtool-bin
 set -e
 
 mkdir -p ext
