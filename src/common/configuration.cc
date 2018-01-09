@@ -124,6 +124,7 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
         node->cores = atoi(strtok_r(NULL, ":", &tok));
         const char *host = strtok_r(NULL, ":", &tok);
         node->port = atoi(strtok_r(NULL, ":", &tok));
+        char *protocol = strtok_r(NULL, ":", &tok);
 
         // Translate hostnames to IP addresses.
         string ip;
@@ -144,5 +145,48 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
         node->host = ip;
 
         all_nodes[node->node_id] = node;
+
+        // Protocol used to communicate with other nodes. We only store data
+        // for this node.
+        //
+        // First, fill every node with default value, then parse protocol to check which
+        // one will use LOW_LATENCY.
+        for (auto kv: all_nodes) {
+            auto id = kv.first;
+            if (id == this_node_id) {
+                continue;
+            }
+            nodes_protocol.insert(std::make_pair(id, ProtocolType::GENUINE));
+        }
+        if (protocol != NULL && node->node_id == this_node_id) {
+            char *tok, *saved;
+            for (tok = strtok_r(protocol, ",", &saved); tok != NULL; tok = strtok_r(NULL, ",", &saved)) {
+                auto id = atoi(tok);
+                nodes_protocol[id] = ProtocolType::LOW_LATENCY;
+            }
+        }
+
+        // Check if we have this node only use one of the two protocol exclusively.
+        ProtocolType *protocol_type = NULL;
+        bool hybrid = false;
+        for (auto kv: nodes_protocol) {
+            auto prot = kv.second;
+            if (protocol_type == NULL) {
+                protocol_type = &prot;
+            } else {
+                if (prot != *protocol_type) {
+                    hybrid = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hybrid) {
+            if (*protocol_type == ProtocolType::GENUINE) {
+                genuine_exclusive_node = true;
+            } else {
+                low_latency_exclusive_node = true;
+            }
+        }
     }
 }

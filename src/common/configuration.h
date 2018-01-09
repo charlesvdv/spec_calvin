@@ -50,6 +50,14 @@ extern pthread_mutex_t mutex_for_item;
 
 #define ORDER_LINE_NUMBER 10
 
+enum class ProtocolType {
+    // Calvin.
+    LOW_LATENCY,
+    // TO-MULTICAST.
+    GENUINE,
+};
+
+
 class Configuration {
   public:
     Configuration(int node_id, const string &filename);
@@ -95,6 +103,13 @@ class Configuration {
 
     map<int, Node *> all_nodes;
     map<int, vector<int>> nodes_by_partition;
+
+    // Protocol used to communicate with this node.
+    map<int, ProtocolType> nodes_protocol;
+
+    // Check if the node is using only one protocol.
+    bool low_latency_exclusive_node = false;
+    bool genuine_exclusive_node = false;
 
   private:
     // TODO(alex): Comments.
