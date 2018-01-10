@@ -29,6 +29,7 @@
 
 #include "common/types.h"
 #include "common/utils.h"
+#include "proto/txn.pb.h"
 
 using std::map;
 using std::string;
@@ -50,12 +51,12 @@ extern pthread_mutex_t mutex_for_item;
 
 #define ORDER_LINE_NUMBER 10
 
-enum class ProtocolType {
-    // Calvin.
-    LOW_LATENCY,
-    // TO-MULTICAST.
-    GENUINE,
-};
+// enum class ProtocolType {
+    // // Calvin.
+    // LOW_LATENCY,
+    // // TO-MULTICAST.
+    // GENUINE,
+// };
 
 
 class Configuration {
@@ -105,7 +106,7 @@ class Configuration {
     map<int, vector<int>> nodes_by_partition;
 
     // Protocol used to communicate with this node.
-    map<int, ProtocolType> nodes_protocol;
+    map<int, TxnProto::ProtocolType> partitions_protocol;
 
     // Check if the node is using only one protocol.
     bool low_latency_exclusive_node = false;

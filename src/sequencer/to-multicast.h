@@ -6,6 +6,7 @@
 #include "paxos/paxos.h"
 #include "proto/txn.pb.h"
 #include "sequencer/sequencer.h"
+#include "sequencer/utils.h"
 #include <queue>
 #include <utility>
 #include <vector>
@@ -25,8 +26,6 @@ class Configuration;
 class Connection;
 class TxnProto;
 class ConnectionMultiplexer;
-
-typedef unsigned long LogicalClockT;
 
 enum class TOMulticastState {
     // Wait R-MULTICAST.
@@ -59,6 +58,10 @@ public:
     void Send(TxnProto *message);
     vector<TxnProto*> GetDecided();
 
+    LogicalClockT GetMaxExecutableClock() {
+        return GetMinimumPendingClock();
+    }
+
     ~TOMulticast();
 private:
     void RunThread();
@@ -76,9 +79,6 @@ private:
 
     // Get all nodes involved in a transactions (intra+inter partitions).
     vector<int> GetInvolvedNodes(TxnProto *txn);
-
-    // Get all partitions involved in a transactions.
-    vector<int> GetInvolvedPartitions(TxnProto *txn);
 
     // Get the smallest logical clock transactions which is not yet
     // decided.

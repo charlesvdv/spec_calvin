@@ -156,20 +156,20 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
             if (id == this_node_id) {
                 continue;
             }
-            nodes_protocol.insert(std::make_pair(id, ProtocolType::GENUINE));
+            partitions_protocol.insert(std::make_pair(id, TxnProto::GENUINE));
         }
         if (protocol != NULL && node->node_id == this_node_id) {
             char *tok, *saved;
             for (tok = strtok_r(protocol, ",", &saved); tok != NULL; tok = strtok_r(NULL, ",", &saved)) {
-                auto id = atoi(tok);
-                nodes_protocol[id] = ProtocolType::LOW_LATENCY;
+                auto partition_id = atoi(tok);
+                partitions_protocol[partition_id] = TxnProto::LOW_LATENCY;
             }
         }
 
         // Check if we have this node only use one of the two protocol exclusively.
-        ProtocolType *protocol_type = NULL;
+        TxnProto::ProtocolType *protocol_type = NULL;
         bool hybrid = false;
-        for (auto kv: nodes_protocol) {
+        for (auto kv: partitions_protocol) {
             auto prot = kv.second;
             if (protocol_type == NULL) {
                 protocol_type = &prot;
@@ -182,7 +182,7 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
         }
 
         if (!hybrid) {
-            if (*protocol_type == ProtocolType::GENUINE) {
+            if (*protocol_type == TxnProto::GENUINE) {
                 genuine_exclusive_node = true;
             } else {
                 low_latency_exclusive_node = true;

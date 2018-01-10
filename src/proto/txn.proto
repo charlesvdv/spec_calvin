@@ -68,5 +68,12 @@ message TxnProto {
 
   // Logical clock assigned to the transaction by TO-MULTICAST.
   optional uint64 logical_clock = 42;
+
+  // Protocol used by the txn.
+  enum ProtocolType {
+    GENUINE = 0;
+    LOW_LATENCY = 1;
+  };
+  map<int32, ProtocolType> protocols = 43;
 }
 
