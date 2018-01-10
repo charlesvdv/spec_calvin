@@ -46,7 +46,7 @@ public:
         if (a->logical_clock() != b->logical_clock()) {
             return a->logical_clock() > b->logical_clock();
         } else {
-            return a->txn_id() < b->txn_id();
+            return a->txn_id() > b->txn_id();
         }
     }
 };
@@ -61,6 +61,10 @@ public:
     LogicalClockT GetMaxExecutableClock() {
         return GetMinimumPendingClock();
     }
+
+    // Set only logical clock if greater than the current logical clock.
+    void SetLogicalClock(LogicalClockT c);
+    LogicalClockT GetLogicalClock();
 
     ~TOMulticast();
 private:
@@ -90,8 +94,11 @@ private:
 
     void UpdateClockVote(int txn_id, int partition_id, LogicalClockT vote);
 
+    void IncrementLogicalClock();
+
     // Next logical clock that will be assigned.
     LogicalClockT logical_clock_;
+    pthread_mutex_t clock_mutex_;
 
     // Store transactions that are currently being ordered by the protocol.
     AtomicQueue<pair<TxnProto*, TOMulticastState>> pending_operations_;

@@ -16,15 +16,6 @@ class TxnProto;
 class MessageProto;
 class ConnectionMultiplexer;
 
-// enum class CustomSequencerState {
-    // // Waiting for genuine ordering.
-    // PENDING,
-    // // Waiting for Calvin dispatching.
-    // READY,
-    // // Waiting scheduler dispatching.
-    // EXECUTABLE,
-// }
-
 class CustomSequencer {
 public:
     CustomSequencer(Configuration *conf, ConnectionMultiplexer *multiplexer);
@@ -33,6 +24,9 @@ public:
 
     // Propose a batch of messages which needs ordering.
     void OrderTxns(vector<TxnProto*> txns);
+    AtomicQueue<TxnProto*>* GetOrderedTxns() {
+        return &ordered_operations_;
+    }
 
     // Get decided transaction, the vector is supposed to be in order.
     std::vector<TxnProto*> GetDecided();
@@ -59,10 +53,15 @@ private:
     TOMulticast *genuine_;
 
     AtomicQueue<vector<TxnProto*>> received_operations_;
-    // vector<pair<TxnProto*, CustomSequencerState>> operations_;
-    vector<TxnProto*> pending_operations_;
+    AtomicQueue<TxnProto*> ordered_operations_;
+
+    // The key is the transaction id.
+    map<int, TxnProto*> pending_operations_;
     vector<TxnProto*> ready_operations_;
     vector<TxnProto*> executable_operations_;
+
+    // Batch received for a specific round.
+    map<int, vector<MessageProto*>> batch_messages_;
 
     Configuration *configuration_;
     ConnectionMultiplexer *multiplexer_;
@@ -72,6 +71,8 @@ private:
     AtomicQueue<MessageProto> *message_queues;
 
     pthread_t thread_;
+
+    int batch_count_;
 
     bool destructor_invoked_ = false;
     bool started = false;

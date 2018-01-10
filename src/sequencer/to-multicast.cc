@@ -7,6 +7,7 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
     destructor_invoked_ = false;
 
     pthread_mutex_init(&decided_mutex_, NULL);
+    pthread_mutex_init(&clock_mutex_, NULL);
     // Create thread and launch them.
     pthread_create(&thread_, NULL, RunThreadHelper, this);
 
@@ -74,9 +75,8 @@ void TOMulticast::RunThread() {
                     break;
                 case TOMulticastState::GroupTimestamp:
                     {
-                        logical_clock_++;
+                        IncrementLogicalClock();
                         LogicalClockT decided_clock = RunTimestampingConsensus(txn);
-                        // logical_clock_ = max(decided_clock, logical_clock_);
                         txn->set_logical_clock(decided_clock);
                         pending_operations_.Push(make_pair(txn, TOMulticastState::InterPartitionVote));
                         break;
@@ -101,7 +101,7 @@ void TOMulticast::RunThread() {
                     }
                 case TOMulticastState::ReplicaSynchronisation:
                     {
-                        logical_clock_++;
+                        IncrementLogicalClock();
                         RunClockSynchronisationConsensus(txn->logical_clock());
                         pthread_mutex_lock(&decided_mutex_);
                         decided_operations_.push(txn);
@@ -109,7 +109,7 @@ void TOMulticast::RunThread() {
                         break;
                     }
                 default:
-                    LOG(logical_clock_, "Unknow TO-MULTICAST state!");
+                    LOG(GetLogicalClock(), "Unknow TO-MULTICAST state!");
             }
         }
     }
@@ -255,12 +255,31 @@ LogicalClockT TOMulticast::GetMinimumPendingClock() {
 // Txn should be replicated in the same time.
 LogicalClockT TOMulticast::RunTimestampingConsensus(TxnProto *txn) {
     //Spin(0.1);
-    return logical_clock_ + (rand() % 15);
+    return GetLogicalClock() + (rand() % 15);
 }
 
 void TOMulticast::RunClockSynchronisationConsensus(LogicalClockT log_clock) {
     //Spin(0.1);
-    logical_clock_ = std::max(logical_clock_, log_clock);
+    SetLogicalClock(log_clock);
+}
+
+void TOMulticast::SetLogicalClock(LogicalClockT c) {
+    pthread_mutex_lock(&clock_mutex_);
+    logical_clock_ = std::max(c, logical_clock_);
+    pthread_mutex_unlock(&clock_mutex_);
+}
+
+LogicalClockT TOMulticast::GetLogicalClock() {
+    pthread_mutex_lock(&clock_mutex_);
+    auto c = logical_clock_;
+    pthread_mutex_unlock(&clock_mutex_);
+    return c;
+}
+
+void TOMulticast::IncrementLogicalClock() {
+    pthread_mutex_lock(&clock_mutex_);
+    logical_clock_++;
+    pthread_mutex_unlock(&clock_mutex_);
 }
 
 TOMulticastSchedulerInterface::TOMulticastSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client) {
