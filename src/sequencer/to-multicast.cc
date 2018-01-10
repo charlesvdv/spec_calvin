@@ -145,7 +145,7 @@ void TOMulticast::ReceiveMessages() {
         auto search_txn = clock_votes_.find(txn_id);
         if (search_txn != clock_votes_.end()) {
             map<int, LogicalClockT> votes = (*search_txn).second;
-            size_t partition_size = GetInvolvedPartitions(txn).size();
+            size_t partition_size = Utils::GetInvolvedPartitions(txn).size();
             // We received all the votes for this transaction.
             if (partition_size == votes.size()) {
                 LogicalClockT max_vote = 0;
@@ -225,17 +225,6 @@ vector<int> TOMulticast::GetInvolvedNodes(TxnProto *txn) {
         }
     }
     return vector<int>(involved_nodes.begin(), involved_nodes.end());
-}
-
-vector<int> TOMulticast::GetInvolvedPartitions(TxnProto *txn) {
-    set<int> partitions;
-
-    auto readers = txn->readers();
-    std::copy(readers.begin(), readers.end(), std::inserter(partitions, partitions.end()));
-    auto writers = txn->writers();
-    std::copy(writers.begin(), writers.end(), std::inserter(partitions, partitions.end()));
-
-    return vector<int>(partitions.begin(), partitions.end());
 }
 
 LogicalClockT TOMulticast::GetMinimumPendingClock() {
