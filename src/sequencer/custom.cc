@@ -48,19 +48,21 @@ void CustomSequencer::RunThread() {
 
         // -- 2. Dispatch operations with genuine protocol.
         for (auto &txn: batch) {
+            // std::cout << txn->txn_id() << " multipartition? " << txn->multipartition() << "\n";
             if (!txn->multipartition()) {
                 txn->set_logical_clock(0);
                 executable_operations_.push_back(txn);
-            }
-            vector<int> genuine_partition = Utils::GetPartitionsWithProtocol(txn, TxnProto::GENUINE);
-            if (genuine_partition.size() == 0) {
-                // TODO: check if process leader.
-                genuine_->Send(txn);
-                pending_operations_[txn->txn_id()] = txn;
             } else {
-                // Calvin only MPO doesn't have any logical clock.
-                txn->set_logical_clock(0);
-                ready_operations_.push_back(txn);
+                vector<int> genuine_partition = Utils::GetPartitionsWithProtocol(txn, TxnProto::GENUINE);
+                if (genuine_partition.size() != 0) {
+                    // TODO: check if process leader.
+                    genuine_->Send(txn);
+                    pending_operations_[txn->txn_id()] = txn;
+                } else {
+                    // Calvin only MPO doesn't have any logical clock.
+                    txn->set_logical_clock(0);
+                    ready_operations_.push_back(txn);
+                }
             }
         }
 
@@ -142,10 +144,11 @@ void CustomSequencer::RunThread() {
             }
         }
         batch_messages_.erase(batch_messages_.find(batch_count_));
-        std::cout << "mec: " << mec << "\n";
+        // std::cout << "mec: " << mec << "\n";
 
         // -- 6. Update logical clock for terminaison.
-        genuine_->SetLogicalClock(max_clock);
+        // TODO
+        // genuine_->SetLogicalClock(max_clock);
 
         // -- 7. Send executable txn to the scheduler.
         std::sort(executable_operations_.begin(), executable_operations_.end(), SortTxn);
@@ -159,6 +162,7 @@ void CustomSequencer::RunThread() {
                 executable_operations_.erase(executable_operations_.begin(), --it);
                 break;
             }
+            // std::cout << "Added txn with id: " << txn->txn_id() << " log clock: " << txn->logical_clock() << "\n";
             ordered_operations_.Push(txn);
         }
         if (!loop_breaked) {
@@ -238,24 +242,23 @@ void CustomSequencerSchedulerInterface::RunClient() {
             int txn_id_offset = i;
             TxnProto *txn;
             client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
+            txn->set_multipartition(Utils::IsReallyMultipartition(txn, configuration_->this_node_partition));
             batch.push_back(txn);
         }
         sequencer_->OrderTxns(batch);
 
         vector<TxnProto*> ordered_txns;
-        TxnProto *txn;
-        while(sequencer_->GetOrderedTxn(&txn)) {
-            ordered_txns.push_back(txn);
+        while(ordered_txns.size() == 0) {
+            TxnProto *txn;
+            while(sequencer_->GetOrderedTxn(&txn)) {
+                ordered_txns.push_back(txn);
+            }
+            if (ordered_txns.size() == 0) {
+                Spin(0.02);
+            }
         }
 
-        if (ordered_txns.size() == 0) {
-            Spin(0.01);
-            continue;
-        }
-        Spin(0.02);
-
-        // std::cout << "ok" << "\n";
-        std::cout << "batch count: " << batch_count_ << "\n";
+        // std::cout << "!!! batch count: " << batch_count_  << " " << ordered_txns.size() << "\n";
 
         MessageProto msg;
         msg.set_destination_channel("scheduler_");
