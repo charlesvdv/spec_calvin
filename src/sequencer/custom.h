@@ -24,12 +24,10 @@ public:
 
     // Propose a batch of messages which needs ordering.
     void OrderTxns(vector<TxnProto*> txns);
-    AtomicQueue<TxnProto*>* GetOrderedTxns() {
-        return &ordered_operations_;
-    }
 
-    // Get decided transaction, the vector is supposed to be in order.
-    std::vector<TxnProto*> GetDecided();
+    bool GetOrderedTxn(TxnProto **txn) {
+        return ordered_operations_.Pop(txn);
+    }
 
     void WaitForStart() {
         while (!started)
@@ -76,6 +74,31 @@ private:
 
     bool destructor_invoked_ = false;
     bool started = false;
+};
+
+class CustomSequencerSchedulerInterface {
+public:
+    CustomSequencerSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client);
+    ~CustomSequencerSchedulerInterface();
+private:
+    void RunClient();
+
+    static void *RunClientHelper(void *arg) {
+        reinterpret_cast<CustomSequencerSchedulerInterface*>(arg)->RunClient();
+        return NULL;
+    }
+
+    CustomSequencer *sequencer_;
+
+    Client *client_;
+
+    Connection *connection_;
+    pthread_t thread_;
+
+    bool destructor_invoked_;
+    int max_batch_size = atoi(ConfigReader::Value("max_batch_size").c_str());
+
+    Configuration *configuration_;
 };
 
 #endif

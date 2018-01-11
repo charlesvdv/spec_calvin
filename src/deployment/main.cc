@@ -21,6 +21,7 @@
 #include "scheduler/serial_scheduler.h"
 #include "sequencer/sequencer.h"
 #include "sequencer/to-multicast.h"
+#include "sequencer/custom.h"
 
 //#define HOT 100
 
@@ -242,7 +243,8 @@ int main(int argc, char **argv) {
 
     // Initialize sequencer component and start sequencer thread running.
     // Sequencer sequencer(&config, &multiplexer, client, storage, queue_mode);
-    TOMulticastSchedulerInterface *multicast = new TOMulticastSchedulerInterface(&config, &multiplexer, client);
+    // TOMulticastSchedulerInterface *multicast = new TOMulticastSchedulerInterface(&config, &multiplexer, client);
+    CustomSequencerSchedulerInterface sequencer(&config, &multiplexer, client);
     Connection *scheduler_connection = multiplexer.NewConnection("scheduler_");
 
     AtomicQueue<TxnProto*> txns_queue;
@@ -273,7 +275,7 @@ int main(int argc, char **argv) {
     //sequencer.output(scheduler);
     delete scheduler;
     delete scheduler_connection;
-    delete multicast;
+    // delete multicast;
     Spin(2);
     return 0;
 }
