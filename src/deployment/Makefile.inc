@@ -12,18 +12,18 @@ TEST_LINKED_OBJECTS :=
 
 # Link the template to avoid redundancy
 include $(MAKEFILE_TEMPLATE)
-	
+
 # Need to specify test cases explicitly because they have variables in recipe
 test-deployment: $(DEPLOYMENT_TESTS)
 	@for a in $(DEPLOYMENT_TESTS); do \
 		echo == $$a ==; \
 		$(LDLIBRARYPATH) $$a; \
 	done
-	
+
 # These are left over from the deployment Makefile.  I'm sure there's a far
 #  less redundant way to incorporate these, but for now they're fine here
 $(BINDIR)/deployment/cluster: $(OBJDIR)/deployment/cluster.o \
-                              $(OBJDIR)/common/configuration.o
+                              $(PROTO_OBJS) $(OBJDIR)/common/configuration.o
 	@echo + ld $@
 	@mkdir -p $(@D)
 	$(V)$(CXX) -o $@ $^ $(LDFLAGS) -lrt

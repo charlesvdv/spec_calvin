@@ -31,6 +31,8 @@
 #include "common/utils.h"
 #include "proto/txn.pb.h"
 
+class TxnProto;
+
 using std::map;
 using std::string;
 using std::unordered_map;
@@ -108,6 +110,7 @@ class Configuration {
 
     // Protocol used to communicate with this node.
     map<int, TxnProto::ProtocolType> partitions_protocol;
+    int num_partitions_low_latency = 0;
 
     // Check if the node is using only one protocol.
     bool low_latency_exclusive_node = false;

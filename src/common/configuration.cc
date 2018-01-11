@@ -163,6 +163,7 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
             for (tok = strtok_r(protocol, ",", &saved); tok != NULL; tok = strtok_r(NULL, ",", &saved)) {
                 auto partition_id = atoi(tok);
                 partitions_protocol[partition_id] = TxnProto::LOW_LATENCY;
+                num_partitions_low_latency++;
             }
         }
 
@@ -181,7 +182,7 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
             }
         }
 
-        if (!hybrid) {
+        if (!hybrid && protocol_type != NULL) {
             if (*protocol_type == TxnProto::GENUINE) {
                 genuine_exclusive_node = true;
             } else {
