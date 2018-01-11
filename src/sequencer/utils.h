@@ -34,7 +34,6 @@ public:
     static vector<int> GetPartitionsWithProtocol(TxnProto *txn, TxnProto::ProtocolType type) {
         vector<int> partitions;
         for (auto kv: txn->protocols()) {
-        // for (auto it = txn->protocols.begin(); it != txn->protocols().end())
             if (kv.second == type) {
                 partitions.push_back(kv.first);
             }

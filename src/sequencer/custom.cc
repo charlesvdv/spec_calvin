@@ -37,11 +37,11 @@ void CustomSequencer::RunThread() {
     Spin(1);
 
     while(!destructor_invoked_) {
-        // std::cout << "received operation: " << received_operations_.Size() << "\n"
-            // << "pending operation: " << pending_operations_.size() << "\n"
-            // << "ready operation: " << ready_operations_.size() << "\n"
-            // << "executable operation: " << executable_operations_.size() << "\n"
-            // << "ordered operation: " << ordered_operations_.Size() << "\n";
+        std::cout << "received operation: " << received_operations_.Size() << "\n"
+            << "pending operation: " << pending_operations_.size() << "\n"
+            << "ready operation: " << ready_operations_.size() << "\n"
+            << "executable operation: " << executable_operations_.size() << "\n"
+            << "ordered operation: " << ordered_operations_.Size() << "\n";
         auto batch = HandleReceivedOperations();
         // -- 1. Replicate batch.
         RunReplicationConsensus(batch);
@@ -94,6 +94,11 @@ void CustomSequencer::RunThread() {
         // Used to collect operations by partitions to afterwards send
         // only one message by partitions.
         map<int, vector<TxnProto*>> txn_by_partitions;
+        for (auto protocol_part: configuration_->partitions_protocol) {
+            if (protocol_part.second == TxnProto::LOW_LATENCY) {
+                txn_by_partitions[protocol_part.first];
+            }
+        }
         for (auto txn: ready_operations_) {
             for (auto part: Utils::GetPartitionsWithProtocol(txn, TxnProto::LOW_LATENCY)) {
                 txn_by_partitions[part].push_back(txn);
@@ -120,13 +125,13 @@ void CustomSequencer::RunThread() {
         // -- 4. Collect low latency protocol message.
         while (batch_messages_[batch_count_].size() < unsigned(configuration_->num_partitions_low_latency)) {
             MessageProto rcv_msg;
-            if (!connection_->GetMessage(&rcv_msg)) {
-                Spin(0.01);
-                break;
+            if (connection_->GetMessage(&rcv_msg)) {
+                std::cout << "got batch message!\n";
+                assert(rcv_msg.type() == MessageProto::TXN_BATCH);
+                batch_messages_[rcv_msg.batch_number()].push_back(&rcv_msg);
+            } else {
+                Spin(0.1);
             }
-
-            assert(rcv_msg.type() == MessageProto::TXN_BATCH);
-            batch_messages_[rcv_msg.batch_number()].push_back(&rcv_msg);
         }
 
         // -- 5. Get global max executable clock and receive message inside the execution queue.
@@ -150,6 +155,7 @@ void CustomSequencer::RunThread() {
         // TODO
         // genuine_->SetLogicalClock(max_clock);
 
+        std::cout << "mec: " << mec << "\n";
         // -- 7. Send executable txn to the scheduler.
         std::sort(executable_operations_.begin(), executable_operations_.end(), SortTxn);
 
@@ -184,7 +190,9 @@ vector<TxnProto*> CustomSequencer::HandleReceivedOperations() {
         // Backup partitions protocols inside the transaction.
         auto involved_partitions = Utils::GetInvolvedPartitions(txn);
         for (auto part: involved_partitions) {
-            (*txn->mutable_protocols())[part] = configuration_->partitions_protocol[part];
+            if (part != configuration_->this_node_partition) {
+                (*txn->mutable_protocols())[part] = configuration_->partitions_protocol[part];
+            }
         }
     }
 
@@ -258,7 +266,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
             }
         }
 
-        // std::cout << "!!! batch count: " << batch_count_  << " " << ordered_txns.size() << "\n";
+        std::cout << "!!! batch count: " << batch_count_  << " " << ordered_txns.size() << "\n";
 
         MessageProto msg;
         msg.set_destination_channel("scheduler_");
