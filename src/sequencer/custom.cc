@@ -37,11 +37,11 @@ void CustomSequencer::RunThread() {
     Spin(1);
 
     while(!destructor_invoked_) {
-        std::cout << "received operation: " << received_operations_.Size() << "\n"
-            << "pending operation: " << pending_operations_.size() << "\n"
-            << "ready operation: " << ready_operations_.size() << "\n"
-            << "executable operation: " << executable_operations_.size() << "\n"
-            << "ordered operation: " << ordered_operations_.Size() << "\n";
+        // std::cout << "received operation: " << received_operations_.Size() << "\n"
+            // << "pending operation: " << pending_operations_.size() << "\n"
+            // << "ready operation: " << ready_operations_.size() << "\n"
+            // << "executable operation: " << executable_operations_.size() << "\n"
+            // << "ordered operation: " << ordered_operations_.Size() << "\n";
         auto batch = HandleReceivedOperations();
         // -- 1. Replicate batch.
         RunReplicationConsensus(batch);
@@ -233,7 +233,6 @@ void CustomSequencerSchedulerInterface::RunClient() {
     while(!destructor_invoked_) {
         vector<TxnProto*> batch;
         for (int i = 0; i < max_batch_size; i++) {
-            Spin(0.01);
             int tx_base = configuration_->this_node_id +
                           configuration_->num_partitions * batch_count_;
             int txn_id_offset = i;
@@ -253,7 +252,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
             Spin(0.01);
             continue;
         }
-        // Spin(0.2);
+        Spin(0.02);
 
         // std::cout << "ok" << "\n";
         std::cout << "batch count: " << batch_count_ << "\n";
@@ -268,6 +267,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
             msg.add_data((*it)->SerializeAsString());
         }
         connection_->Send(msg);
+
         batch_count_++;
     }
 }
