@@ -12,6 +12,14 @@ class Utils {
 public:
     Utils() {}
 
+    static bool IsReallyMultipartition(TxnProto *txn, int this_partition_id) {
+        auto partitions = Utils::GetInvolvedPartitions(txn);
+        if (partitions.size() == 1 && partitions[0] == this_partition_id) {
+            return false;
+        }
+        return true;
+    }
+
     static vector<int> GetInvolvedPartitions(TxnProto *txn) {
         set<int> partitions;
 

@@ -265,6 +265,9 @@ void TOMulticast::RunClockSynchronisationConsensus(LogicalClockT log_clock) {
 
 void TOMulticast::SetLogicalClock(LogicalClockT c) {
     pthread_mutex_lock(&clock_mutex_);
+    if (c == std::numeric_limits<LogicalClockT>::max()) {
+        return;
+    }
     logical_clock_ = std::max(c, logical_clock_);
     pthread_mutex_unlock(&clock_mutex_);
 }
