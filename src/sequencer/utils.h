@@ -6,7 +6,7 @@
 
 using std::set;
 
-typedef unsigned long LogicalClockT;
+typedef uint64 LogicalClockT;
 
 class Utils {
 public:

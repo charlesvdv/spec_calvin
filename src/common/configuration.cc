@@ -51,6 +51,28 @@ void Configuration::InitInfo() {
         LOG(-1, " setting part " << this_dc[i]->partition_id << " as node "
                                  << this_dc[i]->node_id);
     }
+
+    // Add information about which protocol should be used.
+    set<int> low_latency_partitions;
+    for (auto node_info: all_nodes) {
+        Node *node = node_info.second;
+        // Set default
+        if (node->partition_id != this_node_partition) {
+            partitions_protocol[node->partition_id] = TxnProto::GENUINE;
+        }
+
+        if (node->partition_id == this_node_partition) {
+            for (auto protocol_change_partition: node->low_latency_partitions) {
+                low_latency_partitions.insert(protocol_change_partition);
+            }
+        }
+    }
+    num_partitions_low_latency = low_latency_partitions.size();
+    for (auto part: low_latency_partitions) {
+        std::cout << "set partition " << part << " as low latency\n";
+        partitions_protocol[part] = TxnProto::LOW_LATENCY;
+        std::cout << partitions_protocol[part] << "\n";
+    }
 }
 
 // TODO(alex): Implement better (application-specific?) partitioning.
@@ -72,9 +94,18 @@ bool Configuration::WriteToFile(const string &filename) const {
     for (map<int, Node *>::const_iterator it = all_nodes.begin();
          it != all_nodes.end(); ++it) {
         Node *node = it->second;
-        fprintf(fp, "node%d=%d:%d:%d:%s:%d\n", it->first, node->replica_id,
+
+        // Format low latency protocol partition
+        string protocol = "";
+        for (size_t i = 0; i < node->low_latency_partitions.size(); i++) {
+            if (i!=0) {
+                protocol += ",";
+            }
+            protocol += std::to_string(node->low_latency_partitions[i]);
+        }
+        fprintf(fp, "node%d=%d:%d:%d:%s:%d:%s\n", it->first, node->replica_id,
                 node->partition_id, node->cores, node->host.c_str(),
-                node->port);
+                node->port, protocol.c_str());
     }
     fclose(fp);
     return true;
@@ -144,50 +175,14 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
         }
         node->host = ip;
 
+        if (protocol != NULL) {
+            char *subtok, *saved;
+            for (subtok = strtok_r(protocol, ",", &saved); subtok != NULL; subtok = strtok_r(NULL, ",", &saved)) {
+                auto partition_id = atoi(subtok);
+                node->low_latency_partitions.push_back(partition_id);
+            }
+        }
+
         all_nodes[node->node_id] = node;
-
-        // Protocol used to communicate with other nodes. We only store data
-        // for this node.
-        //
-        // First, fill every node with default value, then parse protocol to check which
-        // one will use LOW_LATENCY.
-        for (auto kv: all_nodes) {
-            auto id = kv.first;
-            if (id == this_node_id) {
-                continue;
-            }
-            partitions_protocol.insert(std::make_pair(id, TxnProto::GENUINE));
-        }
-        if (protocol != NULL && node->node_id == this_node_id) {
-            char *tok, *saved;
-            for (tok = strtok_r(protocol, ",", &saved); tok != NULL; tok = strtok_r(NULL, ",", &saved)) {
-                auto partition_id = atoi(tok);
-                partitions_protocol[partition_id] = TxnProto::LOW_LATENCY;
-                num_partitions_low_latency++;
-            }
-        }
-
-        // Check if we have this node only use one of the two protocol exclusively.
-        TxnProto::ProtocolType *protocol_type = NULL;
-        bool hybrid = false;
-        for (auto kv: partitions_protocol) {
-            auto prot = kv.second;
-            if (protocol_type == NULL) {
-                protocol_type = &prot;
-            } else {
-                if (prot != *protocol_type) {
-                    hybrid = true;
-                    break;
-                }
-            }
-        }
-
-        if (!hybrid && protocol_type != NULL) {
-            if (*protocol_type == TxnProto::GENUINE) {
-                genuine_exclusive_node = true;
-            } else {
-                low_latency_exclusive_node = true;
-            }
-        }
     }
 }
