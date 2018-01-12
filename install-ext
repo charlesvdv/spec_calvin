@@ -25,6 +25,7 @@ cd ..
 # # protobuf
 git clone https://github.com/google/protobuf.git
 cd protobuf
+git checkout "3.3.x"
 ./autogen.sh
 ./configure --prefix=$PWD
 make -j7

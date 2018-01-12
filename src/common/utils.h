@@ -822,6 +822,10 @@ struct Node {
     // Total number of cores available for use by this node.
     // Note: Is this needed?
     int cores;
+
+    // Partitions wich use low latency protocol to communicate with this
+    // node.
+    vector<int> low_latency_partitions;
 };
 
 class WriteLock {

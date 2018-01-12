@@ -113,8 +113,8 @@ class Configuration {
     int num_partitions_low_latency = 0;
 
     // Check if the node is using only one protocol.
-    bool low_latency_exclusive_node = false;
-    bool genuine_exclusive_node = false;
+    // bool low_latency_exclusive_node = false;
+    // bool genuine_exclusive_node = false;
 
   private:
     // TODO(alex): Comments.
