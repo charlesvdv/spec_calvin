@@ -33,6 +33,8 @@ public:
         while (!started)
             ;
     }
+    void output(DeterministicScheduler *scheduler);
+
 private:
     void RunThread();
 
@@ -80,6 +82,8 @@ class CustomSequencerSchedulerInterface {
 public:
     CustomSequencerSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client);
     ~CustomSequencerSchedulerInterface();
+
+    void output(DeterministicScheduler *scheduler);
 private:
     void RunClient();
 

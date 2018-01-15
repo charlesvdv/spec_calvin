@@ -1,5 +1,7 @@
 #include "sequencer/custom.h"
 
+extern LatencyUtils latency_util;
+
 bool SortTxn(TxnProto *a, TxnProto *b) {
     if (a->logical_clock() != b->logical_clock()) {
         return a->logical_clock() < b->logical_clock();
@@ -139,7 +141,7 @@ void CustomSequencer::RunThread() {
                 assert(rcv_msg->type() == MessageProto::TXN_BATCH);
                 batch_messages_[rcv_msg->batch_number()].push_back(rcv_msg);
             } else {
-                Spin(0.1);
+                Spin(0.01);
             }
         }
 
@@ -163,7 +165,7 @@ void CustomSequencer::RunThread() {
 
         // -- 6. Update logical clock for terminaison.
         calvin_clock_value = max_clock + 1;
-        std::cout << batch_count_ << " " << mec << " " << calvin_clock_value << "\n" << std::flush;
+        // std::cout << batch_count_ << " " << mec << " " << calvin_clock_value << "\n" << std::flush;
         genuine_->SetLogicalClock(max_clock);
 
         // -- 7. Send executable txn to the scheduler.
@@ -225,6 +227,30 @@ LogicalClockT CustomSequencer::GetMaxGroupExecutableClock(std::vector<TxnProto*>
     } else {
         return genuine_->GetMaxExecutableClock();
     }
+}
+
+void CustomSequencer::output(DeterministicScheduler *scheduler) {
+    destructor_invoked_ = true;
+    // pthread_join(thread_, NULL);
+    ofstream myfile;
+    myfile.open(IntToString(configuration_->this_node_id) + "output.txt");
+    int count = 0;
+    double abort = 0;
+    myfile << "THROUGHPUT" << '\n';
+    while ((abort = scheduler->abort[count]) != -1 && count < THROUGHPUT_SIZE) {
+        myfile << scheduler->throughput[count] << ", " << abort << '\n';
+        ++count;
+    }
+
+    myfile << "SEP LATENCY" << '\n';
+    int avg_lat = latency_util.average_latency();
+    // myfile << latency_util.average_sp_latency() << ", "
+           // << latency_util.average_mp_latency() << '\n';
+    myfile << "LATENCY" << '\n';
+    myfile << avg_lat << ", " << latency_util.total_latency << ", "
+           << latency_util.total_count << '\n';
+
+    myfile.close();
 }
 
 CustomSequencerSchedulerInterface::CustomSequencerSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client) {
@@ -302,4 +328,9 @@ void CustomSequencerSchedulerInterface::RunClient() {
 
         batch_count_++;
     }
+}
+
+void CustomSequencerSchedulerInterface::output(DeterministicScheduler *scheduler) {
+    destructor_invoked_ = true;
+    sequencer_->output(scheduler);
 }

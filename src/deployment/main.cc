@@ -269,7 +269,7 @@ int main(int argc, char **argv) {
     // sequencer.WaitForStart();
     Spin(atoi(ConfigReader::Value("duration").c_str()));
     scheduler->StopRunning();
-    //sequencer.output(scheduler);
+    sequencer.output(scheduler);
     delete scheduler;
     delete scheduler_connection;
     // delete multicast;
