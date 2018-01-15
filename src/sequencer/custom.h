@@ -46,9 +46,10 @@ private:
     // void Synchronize();
     vector<TxnProto*> HandleReceivedOperations();
 
-    void RunReplicationConsensus(vector<TxnProto*> txns);
+    LogicalClockT RunConsensus(vector<TxnProto*> batch, vector<TxnProto*> decided_ops);
+    // void RunReplicationConsensus(vector<TxnProto*> txns);
 
-    LogicalClockT GetMaxGroupExecutableClock(std::vector<TxnProto*> &txns);
+    // LogicalClockT GetMaxGroupExecutableClock(std::vector<TxnProto*> &txns);
 
     TOMulticast *genuine_;
 
