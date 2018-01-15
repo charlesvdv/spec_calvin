@@ -67,11 +67,13 @@ message TxnProto {
 
   // Logical clock assigned to the transaction by TO-MULTICAST.
   optional uint64 logical_clock = 42;
+  // For debugging.
+  optional int32 batch_number = 44;
 
   // Protocol used by the txn.
   enum ProtocolType {
     GENUINE = 0;
     LOW_LATENCY = 1;
   };
-  map<int32, ProtocolType> protocols = 43;
+  map<int32, ProtocolType> protocols = 50;
 }

@@ -59,7 +59,13 @@ public:
     vector<TxnProto*> GetDecided();
 
     LogicalClockT GetMaxExecutableClock() {
-        return GetMinimumPendingClock();
+        auto c = GetMinimumPendingClock();
+        if (c >= MAX_CLOCK_CMP) {
+            pthread_mutex_lock(&clock_mutex_);
+            c = logical_clock_;
+            pthread_mutex_unlock(&clock_mutex_);
+        }
+        return c;
     }
 
     // Set only logical clock if greater than the current logical clock.
@@ -97,7 +103,7 @@ private:
     void IncrementLogicalClock();
 
     // Next logical clock that will be assigned.
-    LogicalClockT logical_clock_;
+    LogicalClockT logical_clock_ = 0;
     pthread_mutex_t clock_mutex_;
 
     // Store transactions that are currently being ordered by the protocol.

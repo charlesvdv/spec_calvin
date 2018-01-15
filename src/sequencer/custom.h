@@ -46,7 +46,7 @@ private:
 
     void RunReplicationConsensus(vector<TxnProto*> txns);
 
-    LogicalClockT GetMaxGroupExecutableClock();
+    LogicalClockT GetMaxGroupExecutableClock(std::vector<TxnProto*> &txns);
 
     TOMulticast *genuine_;
 

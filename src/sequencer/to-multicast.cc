@@ -228,7 +228,7 @@ vector<int> TOMulticast::GetInvolvedNodes(TxnProto *txn) {
 }
 
 LogicalClockT TOMulticast::GetMinimumPendingClock() {
-    LogicalClockT min_clock = std::numeric_limits<LogicalClockT>::max();
+    LogicalClockT min_clock = MAX_CLOCK;
 
     // Checking `waiting_vote_operations_` queue.
     for (auto txn_info: waiting_vote_operations_) {
@@ -243,7 +243,7 @@ LogicalClockT TOMulticast::GetMinimumPendingClock() {
                     txn_state == TOMulticastState::ReplicaSynchronisation) {
                 return txn->logical_clock();
             }
-            return std::numeric_limits<LogicalClockT>::max();
+            return MAX_CLOCK;
         };
     std::function<LogicalClockT(LogicalClockT, LogicalClockT)> reducer =
         [](LogicalClockT acc, LogicalClockT a) {
@@ -265,7 +265,7 @@ void TOMulticast::RunClockSynchronisationConsensus(LogicalClockT log_clock) {
 
 void TOMulticast::SetLogicalClock(LogicalClockT c) {
     pthread_mutex_lock(&clock_mutex_);
-    if (c == std::numeric_limits<LogicalClockT>::max()) {
+    if (c == MAX_CLOCK) {
         return;
     }
     logical_clock_ = std::max(c, logical_clock_);

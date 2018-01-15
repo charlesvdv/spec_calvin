@@ -42,6 +42,8 @@ inline unsigned int to_uint(char ch)
 void CustomSequencer::RunThread() {
     Spin(1);
 
+    LogicalClockT calvin_clock_value = 0;
+
     while(!destructor_invoked_) {
         // std::cout << "received operation: " << received_operations_.Size() << "\n"
             // << "pending operation: " << pending_operations_.size() << "\n"
@@ -68,7 +70,7 @@ void CustomSequencer::RunThread() {
                     pending_operations_[txn->txn_id()] = txn;
                 } else {
                     // Calvin only MPO doesn't have any logical clock.
-                    txn->set_logical_clock(0);
+                    txn->set_logical_clock(calvin_clock_value);
                     ready_operations_.push_back(txn);
                 }
             }
@@ -95,7 +97,7 @@ void CustomSequencer::RunThread() {
 
         // -- 3.2 Get max executable clock inside a group.
         // mgec = MAX GROUP EXECUTABLE CLOCK.
-        LogicalClockT mec = GetMaxGroupExecutableClock();
+        LogicalClockT mec = GetMaxGroupExecutableClock(txn_decided_by_genuine);
 
         // -- 3.3 Send message with low latency protocol.
         //
@@ -146,6 +148,7 @@ void CustomSequencer::RunThread() {
         for (auto msg: batch_messages_[batch_count_]) {
             // Calculate global mec.
             mec = std::min(mec, msg->mec());
+            // std::cout << "temp mec: " << mec  << "received mec: " << msg->mec() << "\n";
             max_clock = std::max(max_clock, msg->mec());
 
             // Add new transaction to the execution queue.
@@ -157,9 +160,11 @@ void CustomSequencer::RunThread() {
         }
         batch_messages_.erase(batch_messages_.find(batch_count_));
 
+
         // -- 6. Update logical clock for terminaison.
-        // TODO
-        // genuine_->SetLogicalClock(max_clock);
+        calvin_clock_value = max_clock + 1;
+        std::cout << batch_count_ << " " << mec << " " << calvin_clock_value << "\n" << std::flush;
+        genuine_->SetLogicalClock(max_clock);
 
         // -- 7. Send executable txn to the scheduler.
         std::sort(executable_operations_.begin(), executable_operations_.end(), SortTxn);
@@ -169,9 +174,10 @@ void CustomSequencer::RunThread() {
             auto txn = *it;
             if (txn->logical_clock() >= mec) {
                 loop_breaked = true;
-                executable_operations_.erase(executable_operations_.begin(), --it);
+                executable_operations_.erase(executable_operations_.begin(), it);
                 break;
             }
+            txn->set_batch_number(batch_count_);
             ordered_operations_.Push(txn);
         }
         if (!loop_breaked) {
@@ -211,10 +217,14 @@ void CustomSequencer::RunReplicationConsensus(vector<TxnProto*> txns) {
     // }
 }
 
-LogicalClockT CustomSequencer::GetMaxGroupExecutableClock() {
+LogicalClockT CustomSequencer::GetMaxGroupExecutableClock(std::vector<TxnProto*> &txns) {
     // TODO: consensus on the executable clock.
     Spin(0.1);
-    return genuine_->GetMaxExecutableClock();
+    if (txns.size() != 0) {
+        return txns.back()->logical_clock();
+    } else {
+        return genuine_->GetMaxExecutableClock();
+    }
 }
 
 CustomSequencerSchedulerInterface::CustomSequencerSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client) {
@@ -278,7 +288,14 @@ void CustomSequencerSchedulerInterface::RunClient() {
         msg.set_destination_node(configuration_->this_node_id);
         msg.set_batch_number(batch_count_);
         for (auto it = ordered_txns.begin(); it < ordered_txns.end(); it++) {
-            cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
+            // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
+            // Format involved partitions.
+            auto nodes = Utils::GetInvolvedPartitions(*it);
+            std::ostringstream ss;
+            std::copy(nodes.begin(), nodes.end() - 1, std::ostream_iterator<int>(ss, ","));
+            ss << nodes.back();
+
+            cache_file << (*it)->txn_id() << ":" << ss.str() << ":" << (*it)->batch_number() << ":" << (*it)->logical_clock() << "\n" << std::flush;
             msg.add_data((*it)->SerializeAsString());
         }
         connection_->Send(msg);

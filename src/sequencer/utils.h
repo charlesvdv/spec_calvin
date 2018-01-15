@@ -6,7 +6,10 @@
 
 using std::set;
 
-typedef uint64 LogicalClockT;
+typedef unsigned long LogicalClockT;
+
+#define MAX_CLOCK ULONG_MAX
+#define MAX_CLOCK_CMP UINT_MAX
 
 class Utils {
 public:
