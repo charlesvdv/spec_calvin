@@ -34,10 +34,10 @@ public:
         return vector<int>(partitions.begin(), partitions.end());
     }
 
-    static vector<int> GetPartitionsWithProtocol(TxnProto *txn, TxnProto::ProtocolType type) {
+    static vector<int> GetPartitionsWithProtocol(TxnProto *txn, TxnProto::ProtocolType type, int this_partition) {
         vector<int> partitions;
         for (auto kv: txn->protocols()) {
-            if (kv.second == type) {
+            if (kv.second == type && kv.first != this_partition) {
                 partitions.push_back(kv.first);
             }
         }

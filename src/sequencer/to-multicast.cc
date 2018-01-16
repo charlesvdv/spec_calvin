@@ -66,6 +66,8 @@ void TOMulticast::RunThread() {
             auto txn = txn_info.first;
             auto txn_state = txn_info.second;
 
+            // std::cout << "waiting vote: " << waiting_vote_operations_.size() << "\n"
+                // << "decided ops: " << decided_operations_.size() << "\n";
             switch(txn_state) {
                 case TOMulticastState::WaitingReliableMulticast:
                     DispatchOperationWithReliableMulticast(txn);
@@ -104,6 +106,7 @@ void TOMulticast::RunThread() {
                         IncrementLogicalClock();
                         RunClockSynchronisationConsensus(txn->logical_clock());
                         pthread_mutex_lock(&decided_mutex_);
+                        // std::cout << "decided!!!\n";
                         decided_operations_.push(txn);
                         pthread_mutex_unlock(&decided_mutex_);
                         break;
@@ -111,6 +114,8 @@ void TOMulticast::RunThread() {
                 default:
                     LOG(GetLogicalClock(), "Unknow TO-MULTICAST state!");
             }
+        } else {
+            Spin(0.01);
         }
     }
 }
@@ -123,13 +128,19 @@ void TOMulticast::ReceiveMessages() {
             assert(rcv_msg.data_size() == 1);
             txn->ParseFromString(rcv_msg.data(0));
             pending_operations_.Push(std::make_pair(txn, TOMulticastState::GroupTimestamp));
-            // debug_file_ << "txn_id: " << txn->txn_id() << "\n";
+            debug_file_ << "txn_id: " << txn->txn_id() << "\n";
         } else if (rcv_msg.type() == MessageProto::TOMULTICAST_CLOCK_VOTE) {
             LogicalClockT partition_vote = std::stoul(rcv_msg.data(0));
             int partition_id = configuration_->NodePartition(rcv_msg.source_node());
 
+            debug_file_ << "got vote!!" << rcv_msg.txn_id() << "votes state:\n";
             assert(rcv_msg.has_txn_id());
             UpdateClockVote(rcv_msg.txn_id(), partition_id, partition_vote);
+
+            for (auto vote: clock_votes_) {
+                debug_file_ << "vote txn id " << vote.first << " " << vote.second.size() << "\n";
+            }
+            debug_file_ << "\n";
         } else {
             assert(false);
         }
@@ -138,16 +149,19 @@ void TOMulticast::ReceiveMessages() {
     // Check if we received all votes for an operation.
     // If we received it, we can assign the final timestamp
     // and pass to state = q2 (Synchronisation consensus).
-    for (auto txn_info: waiting_vote_operations_) {
-        int txn_id = txn_info.first;
-        TxnProto *txn = txn_info.second;
+    for (auto it = waiting_vote_operations_.begin(); it != waiting_vote_operations_.end(); ) {
+    // for (auto txn_info: waiting_vote_operations_) {
+        int txn_id = (*it).first;
+        TxnProto *txn = (*it).second;
 
         auto search_txn = clock_votes_.find(txn_id);
         if (search_txn != clock_votes_.end()) {
             map<int, LogicalClockT> votes = (*search_txn).second;
-            size_t partition_size = Utils::GetInvolvedPartitions(txn).size();
+            size_t partition_size = GetInvolvedPartitions(txn).size();
             // We received all the votes for this transaction.
-            if (partition_size == votes.size()) {
+            debug_file_ << "validation: " << txn_id  << " " << partition_size  << " " << votes.size() << "\n";
+            if (partition_size <= votes.size()) {
+                debug_file_ << "validated!! " << txn_id << "\n";
                 LogicalClockT max_vote = 0;
                 for (auto vote: votes) {
                     max_vote = std::max(max_vote, vote.second);
@@ -159,9 +173,11 @@ void TOMulticast::ReceiveMessages() {
                     make_pair(txn, TOMulticastState::ReplicaSynchronisation)
                 );
                 clock_votes_.erase(search_txn);
-                waiting_vote_operations_.erase(txn_info.first);
+                waiting_vote_operations_.erase(it);
+                continue;
             }
         }
+        it++;
     }
 }
 
@@ -193,38 +209,35 @@ void TOMulticast::DispatchOperationWithReliableMulticast(TxnProto *txn) {
     }
 }
 
-vector<int> TOMulticast::GetInvolvedNodes(TxnProto *txn) {
-    set<int> involved_nodes;
-    for (auto partition_reader: txn->readers()) {
-        auto searched_partition = configuration_->nodes_by_partition.find(partition_reader);
-        if (searched_partition != configuration_->nodes_by_partition.end()) {
-            auto nodes = searched_partition->second;
-            std::copy(nodes.begin(), nodes.end(), std::inserter(involved_nodes, involved_nodes.end()));
-        } else {
-            assert(false);
-        }
-    }
-    for (auto partition_writer: txn->writers()) {
-        auto searched_partition = configuration_->nodes_by_partition.find(partition_writer);
-        if (searched_partition != configuration_->nodes_by_partition.end()) {
-            auto nodes = searched_partition->second;
-            std::copy(nodes.begin(), nodes.end(), std::inserter(involved_nodes, involved_nodes.end()));
-        } else {
-            assert(false);
-        }
-    }
-    for (auto node: configuration_->this_group) {
-        involved_nodes.insert(node->node_id);
-    }
+vector<int> TOMulticast::GetInvolvedPartitions(TxnProto *txn) {
+    return Utils::GetPartitionsWithProtocol(txn, TxnProto::GENUINE, configuration_->this_node_partition);
+}
 
-    for (auto it = involved_nodes.begin(); it != involved_nodes.end(); ) {
-        if ((*it) == configuration_->this_node_id) {
-            it = involved_nodes.erase(it);
-        } else {
-            ++it;
-        }
+// No longer needs to send data to its groups because protocol above
+// handles it.
+vector<int> TOMulticast::GetInvolvedNodes(TxnProto *txn) {
+    vector<int> nodes;
+
+    auto partitions = GetInvolvedPartitions(txn);
+    for (auto part: partitions) {
+        auto part_nodes = configuration_->nodes_by_partition[part];
+        nodes.insert(nodes.end(), part_nodes.begin(), part_nodes.end());
     }
-    return vector<int>(involved_nodes.begin(), involved_nodes.end());
+    auto test = Utils::GetInvolvedPartitions(txn);
+    debug_file_ << "partitions: ";
+    for (auto part: partitions) {
+        debug_file_ << part << ",";
+    }
+    debug_file_ << " ";
+    for (auto v: nodes) {
+        debug_file_ << v << ",";
+    }
+    debug_file_ << " ";
+    for (auto v: test) {
+        debug_file_ << v << ",";
+    }
+    debug_file_ << "\n" << std::flush;
+    return nodes;
 }
 
 LogicalClockT TOMulticast::GetMinimumPendingClock() {
