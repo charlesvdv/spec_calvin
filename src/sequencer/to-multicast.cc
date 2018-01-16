@@ -128,19 +128,19 @@ void TOMulticast::ReceiveMessages() {
             assert(rcv_msg.data_size() == 1);
             txn->ParseFromString(rcv_msg.data(0));
             pending_operations_.Push(std::make_pair(txn, TOMulticastState::GroupTimestamp));
-            debug_file_ << "txn_id: " << txn->txn_id() << "\n";
+            // debug_file_ << "txn_id: " << txn->txn_id() << "\n";
         } else if (rcv_msg.type() == MessageProto::TOMULTICAST_CLOCK_VOTE) {
             LogicalClockT partition_vote = std::stoul(rcv_msg.data(0));
             int partition_id = configuration_->NodePartition(rcv_msg.source_node());
 
-            debug_file_ << "got vote!!" << rcv_msg.txn_id() << "votes state:\n";
+            // debug_file_ << "got vote!!" << rcv_msg.txn_id() << "votes state:\n";
             assert(rcv_msg.has_txn_id());
             UpdateClockVote(rcv_msg.txn_id(), partition_id, partition_vote);
 
-            for (auto vote: clock_votes_) {
-                debug_file_ << "vote txn id " << vote.first << " " << vote.second.size() << "\n";
-            }
-            debug_file_ << "\n";
+            // for (auto vote: clock_votes_) {
+                // debug_file_ << "vote txn id " << vote.first << " " << vote.second.size() << "\n";
+            // }
+            // debug_file_ << "\n";
         } else {
             assert(false);
         }
@@ -157,11 +157,12 @@ void TOMulticast::ReceiveMessages() {
         auto search_txn = clock_votes_.find(txn_id);
         if (search_txn != clock_votes_.end()) {
             map<int, LogicalClockT> votes = (*search_txn).second;
-            size_t partition_size = GetInvolvedPartitions(txn).size();
+            // +1 because GetInvolvedPartitions don't give the current partitition.
+            size_t partition_size = GetInvolvedPartitions(txn).size() + 1;
             // We received all the votes for this transaction.
-            debug_file_ << "validation: " << txn_id  << " " << partition_size  << " " << votes.size() << "\n";
-            if (partition_size <= votes.size()) {
-                debug_file_ << "validated!! " << txn_id << "\n";
+            // debug_file_ << "validation: " << txn_id  << " " << partition_size  << " " << votes.size() << "\n";
+            if (partition_size == votes.size()) {
+                // debug_file_ << "validated!! " << txn_id << "\n";
                 LogicalClockT max_vote = 0;
                 for (auto vote: votes) {
                     max_vote = std::max(max_vote, vote.second);
@@ -224,19 +225,19 @@ vector<int> TOMulticast::GetInvolvedNodes(TxnProto *txn) {
         nodes.insert(nodes.end(), part_nodes.begin(), part_nodes.end());
     }
     auto test = Utils::GetInvolvedPartitions(txn);
-    debug_file_ << "partitions: ";
-    for (auto part: partitions) {
-        debug_file_ << part << ",";
-    }
-    debug_file_ << " ";
-    for (auto v: nodes) {
-        debug_file_ << v << ",";
-    }
-    debug_file_ << " ";
-    for (auto v: test) {
-        debug_file_ << v << ",";
-    }
-    debug_file_ << "\n" << std::flush;
+    // debug_file_ << "partitions: ";
+    // for (auto part: partitions) {
+        // debug_file_ << part << ",";
+    // }
+    // debug_file_ << " ";
+    // for (auto v: nodes) {
+        // debug_file_ << v << ",";
+    // }
+    // debug_file_ << " ";
+    // for (auto v: test) {
+        // debug_file_ << v << ",";
+    // }
+    // debug_file_ << "\n" << std::flush;
     return nodes;
 }
 
