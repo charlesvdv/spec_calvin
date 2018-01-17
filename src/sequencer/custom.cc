@@ -36,13 +36,10 @@ void CustomSequencer::OrderTxns(std::vector<TxnProto*> txns) {
     received_operations_.Push(txns);
 }
 
-inline unsigned int to_uint(char ch)
-{
-    return static_cast<unsigned int>(static_cast<unsigned char>(ch));
-}
-
 void CustomSequencer::RunThread() {
     Spin(1);
+
+    Synchronize();
 
     LogicalClockT calvin_clock_value = 0;
     LogicalClockT mec = 0;
@@ -193,6 +190,38 @@ void CustomSequencer::RunThread() {
         }
 
         batch_count_++;
+    }
+}
+
+void CustomSequencer::Synchronize() {
+    set<int> node_ids;
+    for (auto node: configuration_->all_nodes) {
+        if (node.first != configuration_->this_node_id) {
+            node_ids.insert(node.first);
+        }
+    }
+
+    double time = 0;
+    while(!node_ids.empty()) {
+        if (GetTime() > time + 2) {
+            MessageProto msg;
+            msg.set_source_node(configuration_->this_node_id);
+            msg.set_type(MessageProto::EMPTY);
+            msg.set_destination_channel("calvin");
+            for (auto node: node_ids) {
+                if (node != configuration_->this_node_id) {
+                    msg.set_destination_node(node);
+                    connection_->Send(msg);
+                }
+            }
+            time = GetTime();
+        }
+
+        MessageProto msg;
+        while(connection_->GetMessage(&msg)) {
+            assert(msg.type() == MessageProto::EMPTY);
+            node_ids.erase(msg.source_node());
+        }
     }
 }
 
