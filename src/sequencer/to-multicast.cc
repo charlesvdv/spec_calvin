@@ -225,19 +225,7 @@ vector<int> TOMulticast::GetInvolvedNodes(TxnProto *txn) {
         nodes.insert(nodes.end(), part_nodes.begin(), part_nodes.end());
     }
     auto test = Utils::GetInvolvedPartitions(txn);
-    // debug_file_ << "partitions: ";
-    // for (auto part: partitions) {
-        // debug_file_ << part << ",";
-    // }
-    // debug_file_ << " ";
-    // for (auto v: nodes) {
-        // debug_file_ << v << ",";
-    // }
-    // debug_file_ << " ";
-    // for (auto v: test) {
-        // debug_file_ << v << ",";
-    // }
-    // debug_file_ << "\n" << std::flush;
+
     return nodes;
 }
 
