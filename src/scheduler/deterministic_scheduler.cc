@@ -145,7 +145,7 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
     // bool is_recon = false;
     StorageManager *manager;
     TxnProto *txn = NULL;
-    map<int64, MessageProto> buffered_messages;
+    map<int64, vector<MessageProto>> buffered_messages;
     queue<TxnProto *> txns_queue;
 
     MessageProto message;
@@ -200,9 +200,12 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
             }
         } else if (buffered_messages.count(txn->txn_id()) != 0) {
             nothing_happened = false;
-            message = buffered_messages[txn->txn_id()];
+            auto messages = buffered_messages[txn->txn_id()];
+            LOG(txn->txn_id(), " received remote read. Executing messages (number): " << messages.size());
+            for (auto msg: messages) {
+                manager->HandleReadResult(msg);
+            }
             buffered_messages.erase(txn->txn_id());
-            manager->HandleReadResult(message);
             if (scheduler->application_->Execute(txn, manager) == SUCCESS) {
                 LOG(-1, " finished execution for " << txn->txn_id());
                 if (txn->writers_size() == 0 ||
@@ -218,7 +221,7 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
             nothing_happened = false;
             LOG(-1, " got READ_RESULT for " << message.txn_id());
             assert(message.type() == MessageProto::READ_RESULT);
-            buffered_messages[message.txn_id()] = message;
+            buffered_messages[message.txn_id()].push_back(message);
         }
 
         // Current batch has remaining txns, grab up to 10.
