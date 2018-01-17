@@ -14,7 +14,9 @@ def main():
     if ordered(data, offsets):
         print('Everything is ordered!')
     else:
-        print('Not ordered. Line blocking: {}'.format([x+1 for x in offsets]))
+        print('Not ordered.')
+
+    print('Offsets: {}'.format([x+1 for x in offsets]))
 
     for f in files:
         f.close()
@@ -23,20 +25,18 @@ def main():
 def ordered(data, offsets):
     while(True):
         for p, offset in enumerate(offsets):
-            if offset == len(data):
-                return True
             txn = data[offset][p]
-            #  if len(txn['nodes']) == 1:
-                #  offsets[i] += 1
-                #  break
 
             executable = True
             for partition in txn['nodes']:
                 if data[offsets[partition]][partition]['id'] != txn['id']:
                     executable = False
             if executable:
+                print('Execute', txn['id'], 'successfully!')
                 for partition in txn['nodes']:
                     offsets[partition] += 1
+                    if offsets[partition] == len(data):
+                        return True
                 break
         else:
             return False
