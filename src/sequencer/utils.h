@@ -8,7 +8,7 @@ using std::set;
 
 typedef unsigned long LogicalClockT;
 
-#define MAX_CLOCK ULONG_MAX
+#define MAX_CLOCK uint64(UINT_MAX) // ULONG_MAX
 #define MAX_CLOCK_CMP UINT_MAX
 
 class Utils {

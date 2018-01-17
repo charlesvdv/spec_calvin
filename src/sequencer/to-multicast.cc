@@ -21,7 +21,7 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
                        // &batch_queue_);
 
     string filename = "debug-" + std::to_string(configuration_->this_node_id) + ".txt";
-    debug_file_.open(filename, std::ios_base::app);
+    debug_file_.open(filename, std::ios_base::out);
 }
 
 TOMulticast::~TOMulticast() {

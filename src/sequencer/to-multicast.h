@@ -60,17 +60,26 @@ public:
 
     LogicalClockT GetMaxExecutableClock() {
         auto c = GetMinimumPendingClock();
-        if (c >= MAX_CLOCK_CMP) {
-            pthread_mutex_lock(&decided_mutex_);
-            if (!decided_operations_.empty()) {
-                c = decided_operations_.top()->logical_clock() - 1;
-            } else {
-                pthread_mutex_lock(&clock_mutex_);
-                c = logical_clock_;
-                pthread_mutex_unlock(&clock_mutex_);
-            }
-            pthread_mutex_unlock(&decided_mutex_);
+        pthread_mutex_lock(&decided_mutex_);
+        if (!decided_operations_.empty()) {
+            c = std::min(c, decided_operations_.top()->logical_clock());
         }
+        pthread_mutex_unlock(&decided_mutex_);
+        pthread_mutex_lock(&clock_mutex_);
+        c = std::min(c, logical_clock_);
+        pthread_mutex_unlock(&clock_mutex_);
+
+        // if (c >= MAX_CLOCK_CMP) {
+            // pthread_mutex_lock(&decided_mutex_);
+            // if (!decided_operations_.empty()) {
+                // c = decided_operations_.top()->logical_clock() - 1;
+            // } else {
+                // pthread_mutex_lock(&clock_mutex_);
+                // c = logical_clock_;
+                // pthread_mutex_unlock(&clock_mutex_);
+            // }
+            // pthread_mutex_unlock(&decided_mutex_);
+        // }
         return c;
     }
 

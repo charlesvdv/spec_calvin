@@ -45,7 +45,6 @@ void CustomSequencer::RunThread() {
     Spin(1);
 
     LogicalClockT calvin_clock_value = 0;
-    // LogicalClockT last_mec = 0;
     LogicalClockT mec = 0;
 
     while(!destructor_invoked_) {
@@ -185,6 +184,7 @@ void CustomSequencer::RunThread() {
         // -- 1. Replicate batch.
         // RunReplicationConsensus(batch);
         mec = RunConsensus(batch, txn_decided_by_genuine);
+        // std::cout << batch_count_ << "local mec: " << mec << "\n";
 
         // -- 2. Dispatch operations with genuine protocol.
         for (auto &txn: batch) {
@@ -293,7 +293,7 @@ void CustomSequencer::RunThread() {
 
         // -- 6. Update logical clock for terminaison.
         calvin_clock_value = max_clock + 1;
-        // std::cout << batch_count_ << " " << mec << " " << calvin_clock_value << "\n" << std::flush;
+        // std::cout << batch_count_ << " " << mec << " " << calvin_clock_value << "\n";
         genuine_->SetLogicalClock(max_clock);
 
         // -- 7. Send executable txn to the scheduler.
@@ -302,13 +302,15 @@ void CustomSequencer::RunThread() {
         bool loop_breaked = false;
         for (auto it = executable_operations_.begin(); it != executable_operations_.end(); it++) {
             auto txn = *it;
-            if (txn->logical_clock() >= mec) {
+            // if (txn->logical_clock() < mec || configuration_->low_latency_exclusive_node) {
+            if (txn->logical_clock() < mec) {
+                txn->set_batch_number(batch_count_);
+                ordered_operations_.Push(txn);
+            } else {
                 loop_breaked = true;
                 executable_operations_.erase(executable_operations_.begin(), it);
                 break;
             }
-            txn->set_batch_number(batch_count_);
-            ordered_operations_.Push(txn);
         }
         if (!loop_breaked) {
             executable_operations_.clear();
@@ -329,10 +331,7 @@ vector<TxnProto*> CustomSequencer::HandleReceivedOperations() {
         // Backup partitions protocols inside the transaction.
         auto involved_partitions = Utils::GetInvolvedPartitions(txn);
         for (auto part: involved_partitions) {
-            // if (part != configuration_->this_node_partition) {
-                // std::cout << "partition " << part << " protocol " << configuration_->partitions_protocol[part] << "\n";
-                (*txn->mutable_protocols())[part] = configuration_->partitions_protocol[part];
-            // }
+            (*txn->mutable_protocols())[part] = configuration_->partitions_protocol[part];
         }
     }
 
@@ -341,11 +340,11 @@ vector<TxnProto*> CustomSequencer::HandleReceivedOperations() {
 
 LogicalClockT CustomSequencer::RunConsensus(vector<TxnProto*> batch, vector<TxnProto*> decided_txns) {
     Spin(0.1);
+    auto c = genuine_->GetMaxExecutableClock();
     if (decided_txns.size() != 0) {
-        return decided_txns.back()->logical_clock();
-    } else {
-        return genuine_->GetMaxExecutableClock();
+        c = std::min(c, decided_txns.back()->logical_clock());
     }
+    return c;
 }
 // void CustomSequencer::RunReplicationConsensus(vector<TxnProto*> txns) {
     // Spin(0.1);
@@ -416,7 +415,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
     int batch_count_ = 0;
 
     string filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
-    std::ofstream cache_file(filename, std::ios_base::app);
+    std::ofstream cache_file(filename, std::ios_base::out);
 
     while(!destructor_invoked_) {
         vector<TxnProto*> batch;
@@ -438,7 +437,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
                 ordered_txns.push_back(txn);
             }
             if (ordered_txns.size() == 0) {
-                Spin(0.02);
+                Spin(0.001);
             }
         }
 
