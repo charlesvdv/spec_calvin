@@ -1,7 +1,9 @@
 import sys
+import re
 
 def main():
-    filenames = sorted(sys.argv[1:])
+    filenames = sys.argv[1:]
+    filenames.sort(key=natural_sorting)
     if len(filenames) == 0:
         print('No files given')
         return
@@ -27,11 +29,10 @@ def ordered(data, offsets):
         for p, offset in enumerate(offsets):
             txn = data[offset][p]
 
-            executable = True
             for partition in txn['nodes']:
                 if data[offsets[partition]][partition]['id'] != txn['id']:
-                    executable = False
-            if executable:
+                    break
+            else:
                 print('Execute', txn['id'], 'successfully!')
                 for partition in txn['nodes']:
                     offsets[partition] += 1
@@ -55,6 +56,7 @@ def parse_files(files):
         data.append(data_line)
     return data
 
+
 def parse_line(line):
     result = {}
     elems = line.split(':')
@@ -62,6 +64,9 @@ def parse_line(line):
     result['nodes'] = [int(x) for x in elems[1].split(',')]
     return result
 
+
+def natural_sorting(s):
+    return [int(c) if c.isdigit() else c for c in re.split('([0-9]+)', s)]
 
 if __name__ == '__main__':
     main()
