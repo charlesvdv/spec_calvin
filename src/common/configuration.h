@@ -22,6 +22,7 @@
 #include <stdint.h>
 
 #include <map>
+#include <queue>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -38,6 +39,7 @@ using std::string;
 using std::unordered_map;
 using std::vector;
 using std::unordered_map;
+using std::priority_queue;
 
 extern map<Key, Key> latest_order_id_for_customer;
 extern map<Key, int> latest_order_id_for_district;
@@ -54,13 +56,12 @@ extern pthread_mutex_t mutex_for_item;
 
 #define ORDER_LINE_NUMBER 10
 
-// enum class ProtocolType {
-    // // Calvin.
-    // LOW_LATENCY,
-    // // TO-MULTICAST.
-    // GENUINE,
-// };
-
+class CompareProtocolSwitch {
+public:
+    bool operator()(pair<int, int> a, pair<int, int> b) {
+        return a.second > b.second;
+    }
+};
 
 class Configuration {
   public:
@@ -115,6 +116,8 @@ class Configuration {
     // Check if the node is using only one protocol.
     bool low_latency_exclusive_node = false;
     // bool genuine_exclusive_node = false;
+
+    priority_queue<pair<int, int>, vector<pair<int, int>>, CompareProtocolSwitch> this_node_protocol_switch;
 
   private:
     // TODO(alex): Comments.

@@ -826,6 +826,10 @@ struct Node {
     // Partitions wich use low latency protocol to communicate with this
     // node.
     vector<int> low_latency_partitions;
+
+    // Protocol switching requirements.
+    // pair<partition, time elapsed before switch>
+    vector<pair<int, int>> protocol_switch;
 };
 
 class WriteLock {

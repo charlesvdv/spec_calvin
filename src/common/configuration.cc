@@ -27,6 +27,9 @@ void Configuration::InitInfo() {
     this_node_partition = all_nodes[this_node_id]->partition_id;
     this_dc_id = all_nodes[this_node_id]->replica_id;
     this_node = all_nodes[this_node_id];
+    for (auto info: all_nodes[this_node_id]->protocol_switch) {
+        this_node_protocol_switch.push(info);
+    }
     set<int> all_partitions;
     for (uint i = 0; i < all_nodes.size(); ++i) {
         if (all_nodes[i]->partition_id == this_node_partition) {
@@ -157,6 +160,7 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
         const char *host = strtok_r(NULL, ":", &tok);
         node->port = atoi(strtok_r(NULL, ":", &tok));
         char *protocol = strtok_r(NULL, ":", &tok);
+        char *protocol_switch = strtok_r(NULL, ":", &tok);
 
         // Translate hostnames to IP addresses.
         string ip;
@@ -181,6 +185,16 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
             for (subtok = strtok_r(protocol, ",", &saved); subtok != NULL; subtok = strtok_r(NULL, ",", &saved)) {
                 auto partition_id = atoi(subtok);
                 node->low_latency_partitions.push_back(partition_id);
+            }
+        }
+
+        if (protocol_switch != NULL) {
+            char *subtok, *saved;
+            for (subtok = strtok_r(protocol_switch, ",", &saved); subtok != NULL; subtok = strtok_r(NULL, ",", &saved)) {
+                char *subsubtok;
+                int partition_id = atoi(strtok_r(subtok, "@", &subsubtok));
+                int switch_time = atoi(strtok_r(NULL, "@", &subsubtok));
+                node->protocol_switch.push_back(std::make_pair(partition_id, switch_time));
             }
         }
 
