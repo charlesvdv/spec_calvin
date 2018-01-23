@@ -89,10 +89,28 @@ class Configuration {
         return part_local_node[partition_id];
     }
 
+    inline bool IsPartitionProtocolExclusive(TxnProto::ProtocolType type) {
+        for (auto i: partitions_protocol) {
+            if (i.second != type) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    inline int GetPartitionProtocolSize(TxnProto::ProtocolType type) {
+        int size = 0;
+        for (auto i: partitions_protocol) {
+            if (i.second == type) {
+                size++;
+            }
+        }
+        return size;
+    }
+
     // Dump the current config into the file in key=value format.
     // Returns true when success.
     bool WriteToFile(const string &filename) const;
-
 
     void InitInfo();
 
@@ -111,11 +129,6 @@ class Configuration {
 
     // Protocol used to communicate with this node.
     map<int, TxnProto::ProtocolType> partitions_protocol;
-    int num_partitions_low_latency = 0;
-
-    // Check if the node is using only one protocol.
-    bool low_latency_exclusive_node = false;
-    bool genuine_exclusive_node = false;
 
     priority_queue<pair<int, int>, vector<pair<int, int>>, CompareProtocolSwitch> this_node_protocol_switch;
 

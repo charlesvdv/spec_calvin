@@ -141,7 +141,7 @@ void CustomSequencer::RunThread() {
             connection_->Send(msg);
         }
         // -- 4. Collect low latency protocol message.
-        while (batch_messages_[batch_count_].size() < unsigned(configuration_->num_partitions_low_latency)) {
+        while (batch_messages_[batch_count_].size() < unsigned(configuration_->GetPartitionProtocolSize(TxnProto::LOW_LATENCY))) {
             MessageProto *rcv_msg = new MessageProto();
             if (connection_->GetMessage(rcv_msg)) {
                 assert(rcv_msg->type() == MessageProto::TXN_BATCH);
@@ -201,7 +201,7 @@ void CustomSequencer::RunThread() {
 
         batch_count_++;
 
-        HandleProtocolSwitch();
+        // HandleProtocolSwitch();
     }
 }
 
@@ -436,10 +436,10 @@ void CustomSequencer::SendSwitchMsg(SwitchInfoProto *payload, int partition_id) 
 }
 
 SwitchInfoProto::PartitionType CustomSequencer::GetPartitionType() {
-    if (configuration_->genuine_exclusive_node) {
+    if (configuration_->IsPartitionProtocolExclusive(TxnProto::GENUINE)) {
         return SwitchInfoProto::FULL_GENUINE;
     }
-    if (configuration_->low_latency_exclusive_node) {
+    if (configuration_->IsPartitionProtocolExclusive(TxnProto::LOW_LATENCY)) {
         return SwitchInfoProto::FULL_LOW_LATENCY;
     }
     return SwitchInfoProto::HYBRID;

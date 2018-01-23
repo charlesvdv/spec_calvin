@@ -70,14 +70,11 @@ void Configuration::InitInfo() {
             }
         }
     }
-    num_partitions_low_latency = low_latency_partitions.size();
     for (auto part: low_latency_partitions) {
         std::cout << "set partition " << part << " as low latency\n";
         partitions_protocol[part] = TxnProto::LOW_LATENCY;
         std::cout << partitions_protocol[part] << "\n";
     }
-    low_latency_exclusive_node = (num_partitions_low_latency == (num_partitions -1));
-    genuine_exclusive_node = (num_partitions_low_latency == 0);
 }
 
 // TODO(alex): Implement better (application-specific?) partitioning.
