@@ -74,6 +74,17 @@ message TxnProto {
   enum ProtocolType {
     GENUINE = 0;
     LOW_LATENCY = 1;
+    // State where new communications are using GENUINE but LOW_LATENCY still
+    // works for older partitions that requires it.
+    TRANSITION = 3;
   };
   map<int32, ProtocolType> protocols = 50;
+
+  // Huge disgusting hack.
+  enum TxnPurpose {
+    TXN = 0;
+    PROTOCOL_SWITCH = 1;
+  }
+  optional TxnPurpose txn_purpose = 60 [default = TXN];
+
 }

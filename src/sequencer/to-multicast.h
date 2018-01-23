@@ -58,6 +58,7 @@ public:
     void Send(TxnProto *message);
     vector<TxnProto*> GetDecided();
 
+
     LogicalClockT GetMaxExecutableClock() {
         auto c = GetMinimumPendingClock();
         pthread_mutex_lock(&decided_mutex_);

@@ -77,6 +77,7 @@ void Configuration::InitInfo() {
         std::cout << partitions_protocol[part] << "\n";
     }
     low_latency_exclusive_node = (num_partitions_low_latency == (num_partitions -1));
+    genuine_exclusive_node = (num_partitions_low_latency == 0);
 }
 
 // TODO(alex): Implement better (application-specific?) partitioning.

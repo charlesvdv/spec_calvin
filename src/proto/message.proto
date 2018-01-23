@@ -33,6 +33,7 @@ message MessageProto {
     LATENCY = 11;
     RMULTICAST_TXN = 12;
     TOMULTICAST_CLOCK_VOTE = 13;
+    SWITCH_PROTOCOL = 14;
   };
   required MessageType type = 9;
 

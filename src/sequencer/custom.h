@@ -6,7 +6,9 @@
 #include "common/connection.h"
 #include "sequencer/utils.h"
 #include "sequencer/to-multicast.h"
+#include "sequencer/protocol-switch.h"
 #include "proto/txn.pb.h"
+#include "proto/switch-info.pb.h"
 #include "pthread.h"
 
 class Configuration;
@@ -48,6 +50,12 @@ private:
 
     LogicalClockT RunConsensus(vector<TxnProto*> batch, vector<TxnProto*> decided_ops);
 
+    // Method used for protocol switching.
+    void HandleProtocolSwitch();
+    SwitchInfoProto::PartitionType GetPartitionType();
+    void SendSwitchMsg(SwitchInfoProto *payload, int partition_id = -1);
+    ProtocolSwitchInfo *protocol_switch_info_;
+
     TOMulticast *genuine_;
 
     AtomicQueue<vector<TxnProto*>> received_operations_;
@@ -65,6 +73,7 @@ private:
     ConnectionMultiplexer *multiplexer_;
 
     Connection *connection_;
+    Connection *switch_connection_;
 
     AtomicQueue<MessageProto> *message_queues;
 
@@ -74,6 +83,8 @@ private:
 
     bool destructor_invoked_ = false;
     bool started = false;
+
+    int start_time_;
 };
 
 class CustomSequencerSchedulerInterface {

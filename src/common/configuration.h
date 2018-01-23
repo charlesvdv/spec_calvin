@@ -115,7 +115,7 @@ class Configuration {
 
     // Check if the node is using only one protocol.
     bool low_latency_exclusive_node = false;
-    // bool genuine_exclusive_node = false;
+    bool genuine_exclusive_node = false;
 
     priority_queue<pair<int, int>, vector<pair<int, int>>, CompareProtocolSwitch> this_node_protocol_switch;
 
