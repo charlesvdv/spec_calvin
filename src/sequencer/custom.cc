@@ -201,7 +201,7 @@ void CustomSequencer::RunThread() {
 
         batch_count_++;
 
-        // HandleProtocolSwitch();
+        HandleProtocolSwitch();
     }
 }
 
@@ -248,6 +248,11 @@ vector<TxnProto*> CustomSequencer::HandleReceivedOperations() {
         // Backup partitions protocols inside the transaction.
         auto involved_partitions = Utils::GetInvolvedPartitions(txn);
         for (auto part: involved_partitions) {
+            auto protocol = configuration_->partitions_protocol[part];
+            if (protocol == TxnProto::TRANSITION) {
+                // TODO.
+                protocol = TxnProto::
+            }
             (*txn->mutable_protocols())[part] = configuration_->partitions_protocol[part];
         }
     }
@@ -289,11 +294,16 @@ void CustomSequencer::output(DeterministicScheduler *scheduler) {
 }
 
 void CustomSequencer::HandleProtocolSwitch() {
+    // Partition p is in TRANSITION state and we are waiting that any hybrid MPO requiring
+    // genuine dispatching with p has been dispatched.
     if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION) {
     }
 
+    // if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_NETWORK_SURVEY) {
+    // }
+
     if (protocol_switch_info_->switching_round == batch_count_) {
-        if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_TRANSITION_TO_GENUINE) {
+        if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_GENUINE_TRANSITION) {
             configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
             protocol_switch_info_->state = ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION;
         } else if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_LOW_LATENCY) {
@@ -314,7 +324,7 @@ void CustomSequencer::HandleProtocolSwitch() {
 
     if (protocol_switch_info_->genuine_executed) {
         assert(protocol_switch_info_->state == ProtocolSwitchState::WAITING_GENUINE_EXECUTION);
-        // Set to TRANSITION to enable low latency without creating low latency message.
+        // Set to TRANSITION to enable low latency message without creating low latency message.
         // This will allows an mec synchronisation to know which clock value should be assigned to
         // low latency only messages. Kind of HACKY.
         configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
@@ -323,13 +333,10 @@ void CustomSequencer::HandleProtocolSwitch() {
     }
 
     // Check if we need to initialize a protocol switch.
+    // And initialize it.
     if (configuration_->this_node_protocol_switch.size()) {
         auto next_switch = configuration_->this_node_protocol_switch.top();
         if ((GetTime() - start_time_) >= next_switch.second) {
-            // Report switching if we are currently in one.
-            if (protocol_switch_info_ != NULL) {
-                next_switch.second += 2;
-            }
             // TODO: intra-partition replication of switch_info
 
             int partition_id = next_switch.first;
@@ -339,12 +346,19 @@ void CustomSequencer::HandleProtocolSwitch() {
             switch_info.set_switching_round(batch_count_ + SWITCH_ROUND_DELTA);
             switch_info.set_type(SwitchInfoProto::INIT_MSG);
 
-            SendSwitchMsg(&switch_info, partition_id);
-            configuration_->this_node_protocol_switch.pop();
+            // Postpone switching if we are currently in one.
+            // otherwise, remove switching info.
+            if (protocol_switch_info_ != NULL) {
+                next_switch.second += 2;
+            } else {
+                SendSwitchMsg(&switch_info, partition_id);
 
-            protocol_switch_info_ = new ProtocolSwitchInfo();
-            protocol_switch_info_->partition_id = partition_id;
-            protocol_switch_info_->state = ProtocolSwitchState::WAITING_INIT;
+                protocol_switch_info_ = new ProtocolSwitchInfo();
+                protocol_switch_info_->partition_id = partition_id;
+                protocol_switch_info_->state = ProtocolSwitchState::WAITING_INIT;
+
+                configuration_->this_node_protocol_switch.pop();
+            }
         }
     }
 
@@ -383,9 +397,9 @@ void CustomSequencer::HandleProtocolSwitch() {
             protocol_switch_info_->switching_round = switch_info.switching_round();
             protocol_switch_info_->partition_type = switch_info.partition_type();
 
-            // Specific depending on the protocol currently in use (LOW_LATENCY or GENUINE).
+            // Specific state/action depending on the protocol currently in use (LOW_LATENCY or GENUINE).
             if (configuration_->partitions_protocol[partition_id] == TxnProto::LOW_LATENCY) {
-                protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_TRANSITION_TO_GENUINE;
+                protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_GENUINE_TRANSITION;
             } else {
                 if (GetPartitionType() == SwitchInfoProto::FULL_GENUINE ||
                         switch_info.partition_type() == SwitchInfoProto::FULL_GENUINE) {

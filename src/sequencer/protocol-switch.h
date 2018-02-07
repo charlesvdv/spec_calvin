@@ -19,7 +19,7 @@ enum class ProtocolSwitchState {
     // LOW_LATENCY -> GENUINE
 
     // Enable transition step.
-    SWITCH_TO_TRANSITION_TO_GENUINE,
+    SWITCH_TO_GENUINE_TRANSITION,
     // Wait to execute every txn involved with
     // switching partition.
     WAITING_LOW_LATENCY_TXN_EXECUTION,
