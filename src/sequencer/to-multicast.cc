@@ -43,14 +43,30 @@ vector<TxnProto*> TOMulticast::GetDecided() {
     LogicalClockT min_pending_clock = GetMinimumPendingClock();
 
     pthread_mutex_lock(&decided_mutex_);
-    while(!decided_operations_.empty() && !destructor_invoked_) {
-        if (decided_operations_.top()->logical_clock() <= min_pending_clock) {
-            delivered.push_back(decided_operations_.top());
-            decided_operations_.pop();
+    std::sort(decided_operations_.begin(), decided_operations_.end(), CompareTxn());
+    for (auto it = decided_operations_.begin(); it < decided_operations_.end(); ) {
+        auto txn = *it;
+        if (txn->logical_clock() <= min_pending_clock) {
+            delivered.push_back(txn);
+            decided_operations_.erase(it);
         } else {
             break;
         }
     }
+    // while(!decided_operations_.empty() && !destructor_invoked_) {
+        // if (decided_operations_.front()->logical_clock() <= min_pending_clock) {
+            // delivered.push_back(decided_operations_.front());
+            // decided_operations_.erase(decided_operations_.begin());
+        // } else {
+            // break;
+        // }
+        // if (decided_operations_.top()->logical_clock() <= min_pending_clock) {
+            // delivered.push_back(decided_operations_.top());
+            // decided_operations_.pop();
+        // } else {
+            // break;
+        // }
+    // }
     pthread_mutex_unlock(&decided_mutex_);
     return delivered;
 }
@@ -107,7 +123,7 @@ void TOMulticast::RunThread() {
                         RunClockSynchronisationConsensus(txn->logical_clock());
                         pthread_mutex_lock(&decided_mutex_);
                         // std::cout << "decided!!!\n";
-                        decided_operations_.push(txn);
+                        decided_operations_.push_back(txn);
                         pthread_mutex_unlock(&decided_mutex_);
                         break;
                     }
@@ -285,6 +301,46 @@ void TOMulticast::IncrementLogicalClock() {
     pthread_mutex_lock(&clock_mutex_);
     logical_clock_++;
     pthread_mutex_unlock(&clock_mutex_);
+}
+
+bool TOMulticast::HasTxnForPartition(int partition_id) {
+    // Checking `waiting_vote_operations_` queue.
+    for (auto txn_info: waiting_vote_operations_) {
+        auto parts = Utils::GetInvolvedPartitions(txn_info.second);
+        if (std::find(parts.begin(), parts.end(), partition_id) != parts.end()) {
+            return true;
+        }
+    }
+
+    std::function<bool(pair<TxnProto*, TOMulticastState>)> getter =
+        [partition_id](pair<TxnProto*, TOMulticastState> a) {
+            auto txn = a.first;
+            auto parts = Utils::GetInvolvedPartitions(txn);
+            if (std::find(parts.begin(), parts.end(), partition_id) != parts.end()) {
+                return true;
+            }
+            return false;
+        };
+    std::function<bool(bool, bool)> reducer =
+        [](bool acc, bool a) {
+            return acc || a;
+        };
+
+    if (pending_operations_.Reduce(getter, reducer)) {
+        return true;
+    }
+
+    pthread_mutex_lock(&decided_mutex_);
+    for (auto txn: decided_operations_) {
+        auto parts = Utils::GetInvolvedPartitions(txn);
+        if (std::find(parts.begin(), parts.end(), partition_id) != parts.end()) {
+            return true;
+        }
+
+    }
+    pthread_mutex_unlock(&decided_mutex_);
+
+    return false;
 }
 
 TOMulticastSchedulerInterface::TOMulticastSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client) {

@@ -63,7 +63,8 @@ public:
         auto c = GetMinimumPendingClock();
         pthread_mutex_lock(&decided_mutex_);
         if (!decided_operations_.empty()) {
-            c = std::min(c, decided_operations_.top()->logical_clock());
+            std::sort(decided_operations_.begin(), decided_operations_.end(), CompareTxn());
+            c = std::min(c, decided_operations_.front()->logical_clock());
         }
         pthread_mutex_unlock(&decided_mutex_);
         pthread_mutex_lock(&clock_mutex_);
@@ -76,6 +77,8 @@ public:
     // Set only logical clock if greater than the current logical clock.
     void SetLogicalClock(LogicalClockT c);
     LogicalClockT GetLogicalClock();
+
+    bool HasTxnForPartition(int partition_id);
 
     ~TOMulticast();
 private:
@@ -125,7 +128,8 @@ private:
     map<int, map<int, LogicalClockT>> clock_votes_;
 
     // Store decided operation waiting to be TO-DELIVERED.
-    priority_queue<TxnProto*, vector<TxnProto*>, CompareTxn> decided_operations_;
+    // priority_queue<TxnProto*, vector<TxnProto*>, CompareTxn> decided_operations_;
+    vector<TxnProto*> decided_operations_;
     pthread_mutex_t decided_mutex_;
 
     Configuration *configuration_;

@@ -250,8 +250,7 @@ vector<TxnProto*> CustomSequencer::HandleReceivedOperations() {
         for (auto part: involved_partitions) {
             auto protocol = configuration_->partitions_protocol[part];
             if (protocol == TxnProto::TRANSITION) {
-                // TODO.
-                protocol = TxnProto::
+                protocol = TxnProto::GENUINE;
             }
             (*txn->mutable_protocols())[part] = configuration_->partitions_protocol[part];
         }
@@ -297,6 +296,32 @@ void CustomSequencer::HandleProtocolSwitch() {
     // Partition p is in TRANSITION state and we are waiting that any hybrid MPO requiring
     // genuine dispatching with p has been dispatched.
     if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION) {
+        bool hasStillTxns = genuine_->HasTxnForPartition(protocol_switch_info_->partition_id);
+        for (auto txn: executable_operations_) {
+            auto parts = Utils::GetInvolvedPartitions(txn);
+            if (std::find(parts.begin(), parts.end(), protocol_switch_info_->partition_id) != parts.end()) {
+                hasStillTxns = true;
+            }
+        }
+
+        if (!hasStillTxns) {
+            auto switching_round = batch_count_ + SWITCH_ROUND_DELTA;
+            SwitchInfoProto switch_info = SwitchInfoProto();
+            switch_info.set_partition_type(GetPartitionType());
+            switch_info.set_current_round(batch_count_);
+            switch_info.set_switching_round(switching_round);
+            switch_info.set_type(SwitchInfoProto::GENUINE_SWITCH_ROUND_VOTE);
+
+            SendSwitchMsg(&switch_info, protocol_switch_info_->partition_id);
+
+            protocol_switch_info_->switching_round =
+                std::max(protocol_switch_info_->switching_round, switching_round);
+            if (protocol_switch_info_->switching_round != 0) {
+                protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_GENUINE;
+            } else {
+                protocol_switch_info_->state = ProtocolSwitchState::WAITING_TO_GENUINE_ROUND_VOTE;
+            }
+        }
     }
 
     // if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_NETWORK_SURVEY) {
@@ -306,8 +331,14 @@ void CustomSequencer::HandleProtocolSwitch() {
         if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_GENUINE_TRANSITION) {
             configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
             protocol_switch_info_->state = ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION;
+            protocol_switch_info_->switching_round = 0;
         } else if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_LOW_LATENCY) {
             configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
+
+            delete protocol_switch_info_;
+            protocol_switch_info_ = NULL;
+        } else if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_GENUINE) {
+            configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::GENUINE;
 
             delete protocol_switch_info_;
             protocol_switch_info_ = NULL;
@@ -428,6 +459,16 @@ void CustomSequencer::HandleProtocolSwitch() {
 
             // Reinsert transitions to retry it.
             configuration_->this_node_protocol_switch.push(std::make_pair(partition_id, GetTime() + 3));
+
+        } else if (switch_info.type() == SwitchInfoProto::GENUINE_SWITCH_ROUND_VOTE) {
+            auto switching_round = switch_info.switching_round();
+            protocol_switch_info_->switching_round =
+                std::max(protocol_switch_info_->switching_round, switching_round);
+            if (protocol_switch_info_->switching_round != 0) {
+                protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_GENUINE;
+            } else {
+                protocol_switch_info_->state = ProtocolSwitchState::WAITING_TO_GENUINE_ROUND_VOTE;
+            }
         } else {
             assert(false);
         }

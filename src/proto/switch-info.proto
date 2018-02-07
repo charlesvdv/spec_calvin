@@ -12,6 +12,7 @@ message SwitchInfoProto {
   enum MessageType {
     INIT_MSG = 1;
     ABORT = 2;
+    GENUINE_SWITCH_ROUND_VOTE = 3;
   };
   optional MessageType type = 4;
 }

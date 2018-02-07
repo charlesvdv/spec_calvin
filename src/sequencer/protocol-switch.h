@@ -23,6 +23,10 @@ enum class ProtocolSwitchState {
     // Wait to execute every txn involved with
     // switching partition.
     WAITING_LOW_LATENCY_TXN_EXECUTION,
+    // Waiting round vote from the other partitions.
+    WAITING_TO_GENUINE_ROUND_VOTE,
+    // Waiting round execution.
+    SWITCH_TO_GENUINE,
 
     // GENUINE -> LOW_LATENCY
 
