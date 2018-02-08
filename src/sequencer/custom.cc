@@ -293,74 +293,77 @@ void CustomSequencer::output(DeterministicScheduler *scheduler) {
 }
 
 void CustomSequencer::HandleProtocolSwitch() {
-    // Partition p is in TRANSITION state and we are waiting that any hybrid MPO requiring
-    // genuine dispatching with p has been dispatched.
-    if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION) {
-        bool hasStillTxns = genuine_->HasTxnForPartition(protocol_switch_info_->partition_id);
-        for (auto txn: executable_operations_) {
-            auto parts = Utils::GetInvolvedPartitions(txn);
-            if (std::find(parts.begin(), parts.end(), protocol_switch_info_->partition_id) != parts.end()) {
-                hasStillTxns = true;
+    // Check if we can update state of the protocol.
+    if (protocol_switch_info_ != NULL) {
+        // Partition p is in TRANSITION state and we are waiting that any hybrid MPO requiring
+        // genuine dispatching with p has been dispatched.
+        if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION) {
+            bool hasStillTxns = genuine_->HasTxnForPartition(protocol_switch_info_->partition_id);
+            for (auto txn: executable_operations_) {
+                auto parts = Utils::GetInvolvedPartitions(txn);
+                if (std::find(parts.begin(), parts.end(), protocol_switch_info_->partition_id) != parts.end()) {
+                    hasStillTxns = true;
+                }
+            }
+
+            if (!hasStillTxns) {
+                auto switching_round = batch_count_ + SWITCH_ROUND_DELTA;
+                SwitchInfoProto switch_info = SwitchInfoProto();
+                switch_info.set_partition_type(GetPartitionType());
+                switch_info.set_current_round(batch_count_);
+                switch_info.set_switching_round(switching_round);
+                switch_info.set_type(SwitchInfoProto::GENUINE_SWITCH_ROUND_VOTE);
+
+                SendSwitchMsg(&switch_info, protocol_switch_info_->partition_id);
+
+                protocol_switch_info_->switching_round =
+                    std::max(protocol_switch_info_->switching_round, switching_round);
+                if (protocol_switch_info_->switching_round != 0) {
+                    protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_GENUINE;
+                } else {
+                    protocol_switch_info_->state = ProtocolSwitchState::WAITING_TO_GENUINE_ROUND_VOTE;
+                }
             }
         }
 
-        if (!hasStillTxns) {
-            auto switching_round = batch_count_ + SWITCH_ROUND_DELTA;
-            SwitchInfoProto switch_info = SwitchInfoProto();
-            switch_info.set_partition_type(GetPartitionType());
-            switch_info.set_current_round(batch_count_);
-            switch_info.set_switching_round(switching_round);
-            switch_info.set_type(SwitchInfoProto::GENUINE_SWITCH_ROUND_VOTE);
+        // if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_NETWORK_SURVEY) {
+        // }
 
-            SendSwitchMsg(&switch_info, protocol_switch_info_->partition_id);
+        if (protocol_switch_info_->switching_round == batch_count_) {
+            if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_GENUINE_TRANSITION) {
+                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
+                protocol_switch_info_->state = ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION;
+                protocol_switch_info_->switching_round = 0;
+            } else if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_LOW_LATENCY) {
+                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
 
-            protocol_switch_info_->switching_round =
-                std::max(protocol_switch_info_->switching_round, switching_round);
-            if (protocol_switch_info_->switching_round != 0) {
-                protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_GENUINE;
-            } else {
-                protocol_switch_info_->state = ProtocolSwitchState::WAITING_TO_GENUINE_ROUND_VOTE;
+                delete protocol_switch_info_;
+                protocol_switch_info_ = NULL;
+            } else if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_GENUINE) {
+                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::GENUINE;
+
+                delete protocol_switch_info_;
+                protocol_switch_info_ = NULL;
             }
         }
-    }
 
-    // if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_NETWORK_SURVEY) {
-    // }
-
-    if (protocol_switch_info_->switching_round == batch_count_) {
-        if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_GENUINE_TRANSITION) {
-            configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
-            protocol_switch_info_->state = ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION;
-            protocol_switch_info_->switching_round = 0;
-        } else if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_LOW_LATENCY) {
+        if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_MEC_SYNCHRO) {
+            assert(configuration_->partitions_protocol[protocol_switch_info_->partition_id] == TxnProto::TRANSITION);
             configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
 
             delete protocol_switch_info_;
             protocol_switch_info_ = NULL;
-        } else if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_GENUINE) {
-            configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::GENUINE;
-
-            delete protocol_switch_info_;
-            protocol_switch_info_ = NULL;
         }
-    }
 
-    if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_MEC_SYNCHRO) {
-        assert(configuration_->partitions_protocol[protocol_switch_info_->partition_id] == TxnProto::TRANSITION);
-        configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
+        if (protocol_switch_info_->genuine_executed) {
+            assert(protocol_switch_info_->state == ProtocolSwitchState::WAITING_GENUINE_EXECUTION);
+            // Set to TRANSITION to enable low latency message without creating low latency message.
+            // This will allows an mec synchronisation to know which clock value should be assigned to
+            // low latency only messages. Kind of HACKY.
+            configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
 
-        delete protocol_switch_info_;
-        protocol_switch_info_ = NULL;
-    }
-
-    if (protocol_switch_info_->genuine_executed) {
-        assert(protocol_switch_info_->state == ProtocolSwitchState::WAITING_GENUINE_EXECUTION);
-        // Set to TRANSITION to enable low latency message without creating low latency message.
-        // This will allows an mec synchronisation to know which clock value should be assigned to
-        // low latency only messages. Kind of HACKY.
-        configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
-
-        protocol_switch_info_->state = ProtocolSwitchState::WAITING_MEC_SYNCHRO;
+            protocol_switch_info_->state = ProtocolSwitchState::WAITING_MEC_SYNCHRO;
+        }
     }
 
     // Check if we need to initialize a protocol switch.
