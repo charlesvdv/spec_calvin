@@ -44,9 +44,9 @@ class CompareTxn {
 public:
     bool operator()(TxnProto *a, TxnProto *b) {
         if (a->logical_clock() != b->logical_clock()) {
-            return a->logical_clock() > b->logical_clock();
+            return a->logical_clock() < b->logical_clock();
         } else {
-            return a->txn_id() > b->txn_id();
+            return a->txn_id() < b->txn_id();
         }
     }
 };
