@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <unistd.h>
 
 #include "applications/microbenchmark.h"
 #include "applications/tpcc.h"
@@ -151,6 +152,7 @@ void stop(int sig) {
 }
 
 int main(int argc, char **argv) {
+    std::cout << "PID: " << getpid() << "\n";
     // TODO(alex): Better arg checking.
     if (argc < 4) {
         fprintf(stderr, "Usage: %s <node-id> <m[icro]|t[pcc]> <percent_mp>\n",
