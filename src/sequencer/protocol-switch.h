@@ -9,7 +9,7 @@
 
 
 // Round increase to propose a future round for round switching.
-#define SWITCH_ROUND_DELTA 4
+#define SWITCH_ROUND_DELTA 10
 #define HYBRID_SYNCED_MAX_DELTA 3
 
 enum class ProtocolSwitchState {

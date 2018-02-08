@@ -216,6 +216,7 @@ void TOMulticast::UpdateClockVote(int txn_id, int partition_id, LogicalClockT vo
 void TOMulticast::DispatchOperationWithReliableMulticast(TxnProto *txn) {
     vector<int> involved_nodes = GetInvolvedNodes(txn);
     for (int node: involved_nodes) {
+        // std::cout << node << "," << std::flush;
         MessageProto msg;
         msg.set_destination_channel("skeen");
         msg.set_source_node(configuration_->this_node_id);
@@ -224,6 +225,7 @@ void TOMulticast::DispatchOperationWithReliableMulticast(TxnProto *txn) {
         msg.set_type(MessageProto::RMULTICAST_TXN);
         skeen_connection_->Send(msg);
     }
+    // std::cout << "\n" << std::flush;
 }
 
 vector<int> TOMulticast::GetInvolvedPartitions(TxnProto *txn) {
