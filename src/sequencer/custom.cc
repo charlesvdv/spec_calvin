@@ -115,11 +115,8 @@ void CustomSequencer::RunThread() {
         // only one message by partitions.
         map<int, vector<TxnProto*>> txn_by_partitions;
         for (auto protocol_part: configuration_->partitions_protocol) {
-            if (protocol_part.second == TxnProto::LOW_LATENCY) {
+            if (protocol_part.second == TxnProto::LOW_LATENCY || protocol_part.second == TxnProto::TRANSITION) {
                 txn_by_partitions[protocol_part.first];
-
-                auto val = protocol_part.first;
-                assert(val >= 0 && val <= 6);
             }
         }
         for (auto txn: ready_operations_) {
@@ -256,7 +253,7 @@ vector<TxnProto*> CustomSequencer::HandleReceivedOperations() {
             if (protocol == TxnProto::TRANSITION) {
                 protocol = TxnProto::GENUINE;
             }
-            (*txn->mutable_protocols())[part] = configuration_->partitions_protocol[part];
+            (*txn->mutable_protocols())[part] = protocol;
         }
     }
 
@@ -334,18 +331,6 @@ void CustomSequencer::HandleProtocolSwitch() {
         // if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_NETWORK_SURVEY) {
         // }
 
-        if (protocol_switch_info_->genuine_executed) {
-            assert(protocol_switch_info_->state == ProtocolSwitchState::WAITING_GENUINE_EXECUTION);
-            // Set to TRANSITION to enable low latency message without creating low latency message.
-            // This will allows an mec synchronisation to know which clock value should be assigned to
-            // low latency only messages. Kind of HACKY.
-            configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
-
-            batch_count_ = protocol_switch_info_->switching_round;
-
-            protocol_switch_info_->state = ProtocolSwitchState::WAITING_MEC_SYNCHRO;
-        }
-
         if (protocol_switch_info_->switching_round == batch_count_) {
             if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_GENUINE_TRANSITION) {
                 configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
@@ -364,11 +349,22 @@ void CustomSequencer::HandleProtocolSwitch() {
             }
         }
 
-        if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_MEC_SYNCHRO) {
+        if (protocol_switch_info_->genuine_executed) {
+            protocol_switch_info_->genuine_executed = false;
+            assert(protocol_switch_info_->state == ProtocolSwitchState::WAITING_GENUINE_EXECUTION);
+            // Set to TRANSITION to enable low latency message without creating low latency message.
+            // This will allows an mec synchronisation to know which clock value should be assigned to
+            // low latency only messages. Kind of HACKY.
+            configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
+
+            batch_count_ = protocol_switch_info_->switching_round;
+
+            protocol_switch_info_->state = ProtocolSwitchState::WAITING_MEC_SYNCHRO;
+        } else if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_MEC_SYNCHRO) {
             assert(configuration_->partitions_protocol[protocol_switch_info_->partition_id] == TxnProto::TRANSITION);
             configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
 
-            // std::cout << "nice!! " << protocol_switch_info_->partition_id << "\n" << std::flush;
+            std::cout << "nice!! " << batch_count_ << "\n";
             delete protocol_switch_info_;
             protocol_switch_info_ = NULL;
         }
