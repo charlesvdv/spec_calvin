@@ -105,9 +105,18 @@ bool Configuration::WriteToFile(const string &filename) const {
             }
             protocol += std::to_string(node->low_latency_partitions[i]);
         }
-        fprintf(fp, "node%d=%d:%d:%d:%s:%d:%s\n", it->first, node->replica_id,
+        // Format protocol switch
+        string protocol_switch = "";
+        for (size_t i = 0; i < node->protocol_switch.size(); i++) {
+            if (i!=0) {
+                protocol += ",";
+            }
+            auto switch_info = node->protocol_switch[i];
+            protocol_switch += std::to_string(switch_info.first) + "@" + std::to_string(switch_info.second);
+        }
+        fprintf(fp, "node%d=%d:%d:%d:%s:%d:%s:%s\n", it->first, node->replica_id,
                 node->partition_id, node->cores, node->host.c_str(),
-                node->port, protocol.c_str());
+                node->port, protocol.c_str(), protocol_switch.c_str());
     }
     fclose(fp);
     return true;
@@ -151,14 +160,13 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
         node->node_id = atoi(key + 4);
 
         // Parse additional node addributes.
-        char *tok;
-        node->replica_id = atoi(strtok_r(value, ":", &tok));
-        node->partition_id = atoi(strtok_r(NULL, ":", &tok));
-        node->cores = atoi(strtok_r(NULL, ":", &tok));
-        const char *host = strtok_r(NULL, ":", &tok);
-        node->port = atoi(strtok_r(NULL, ":", &tok));
-        char *protocol = strtok_r(NULL, ":", &tok);
-        char *protocol_switch = strtok_r(NULL, ":", &tok);
+        node->replica_id = atoi(strsep(&value, ":"));
+        node->partition_id = atoi(strsep(&value, ":"));
+        node->cores = atoi(strsep(&value, ":"));
+        const char *host = strsep(&value, ":");
+        node->port = atoi(strsep(&value, ":"));
+        char *protocol = strsep(&value, ":");
+        char *protocol_switch = value;
 
         // Translate hostnames to IP addresses.
         string ip;
