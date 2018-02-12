@@ -34,12 +34,14 @@ enum class ProtocolSwitchState {
     SWITCH_TO_LOW_LATENCY,
     // When one or two partitions is full
     // multicast. Wait for `genuine_executed` flag.
-    WAITING_GENUINE_EXECUTION,
-    // Just wait one round to synchronize mec before
-    // using LOW_LATENCY.
-    WAITING_MEC_SYNCHRO,
-    // Wait for network survey result.
+    // WAITING_GENUINE_EXECUTION,
+    // // Just wait one round to synchronize mec before
+    // // using LOW_LATENCY.
+    // WAITING_MEC_SYNCHRO,
+    // // Wait for network survey result.
     WAITING_NETWORK_SURVEY,
+
+    MEC_SYNCHRO,
 };
 
 class ProtocolSwitchInfo {
@@ -55,7 +57,11 @@ public:
     int switching_round;
 
     // Flag that informs if a switch request has been executed.
-    bool genuine_executed = false;
+    // bool genuine_executed = false;
+
+    // Informs if MEC is synchronized with the execution (see ProtocolSwitchState::MEC_SYNCHRO).
+    bool local_mec_synchro = false;
+    bool remote_mec_synchro = false;
 };
 
 #endif

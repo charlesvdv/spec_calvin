@@ -51,7 +51,7 @@ private:
     LogicalClockT RunConsensus(vector<TxnProto*> batch, vector<TxnProto*> decided_ops);
 
     // Method used for protocol switching.
-    void HandleProtocolSwitch();
+    void HandleProtocolSwitch(bool got_txns_executed);
     SwitchInfoProto::PartitionType GetPartitionType();
     void SendSwitchMsg(SwitchInfoProto *payload, int partition_id = -1);
     ProtocolSwitchInfo *protocol_switch_info_;

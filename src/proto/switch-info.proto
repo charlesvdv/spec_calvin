@@ -13,6 +13,7 @@ message SwitchInfoProto {
     INIT_MSG = 1;
     ABORT = 2;
     GENUINE_SWITCH_ROUND_VOTE = 3;
+    MEC_SYNCHRONIZED = 4;
   };
   optional MessageType type = 4;
 }
