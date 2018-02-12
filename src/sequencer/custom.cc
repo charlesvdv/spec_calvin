@@ -352,19 +352,43 @@ void CustomSequencer::HandleProtocolSwitch() {
         if (protocol_switch_info_->genuine_executed) {
             protocol_switch_info_->genuine_executed = false;
             assert(protocol_switch_info_->state == ProtocolSwitchState::WAITING_GENUINE_EXECUTION);
-            // Set to TRANSITION to enable low latency message without creating low latency message.
-            // This will allows an mec synchronisation to know which clock value should be assigned to
-            // low latency only messages. Kind of HACKY.
-            configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
 
-            batch_count_ = protocol_switch_info_->switching_round;
+            if (GetPartitionType() == SwitchInfoProto::FULL_GENUINE
+                    && protocol_switch_info_->partition_type == SwitchInfoProto::FULL_GENUINE) {
+                // Sync batch number.
+                batch_count_ = protocol_switch_info_->switching_round;
+                protocol_switch_info_->state = ProtocolSwitchState::WAITING_MEC_SYNCHRO;
 
-            protocol_switch_info_->state = ProtocolSwitchState::WAITING_MEC_SYNCHRO;
+                // Set to TRANSITION to enable low latency message without creating low latency message.
+                // This will allows an mec synchronisation to know which clock value should be assigned to
+                // low latency only messages. Kind of HACKY.
+                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
+            } else if (GetPartitionType() == SwitchInfoProto::FULL_GENUINE) {
+                // Wait for our first Calvin message to sync round number.
+                MessageProto *msg = new MessageProto();
+                while(!connection_->GetMessage(msg)) {
+                    Spin(0.1);
+                }
+                assert(configuration_->NodePartition(msg->source_node()) == protocol_switch_info_->partition_id);
+                batch_messages_[msg->batch_number()].push_back(msg);
+                batch_count_ = msg->batch_number();
+
+                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
+                delete protocol_switch_info_;
+                protocol_switch_info_ = NULL;
+            } else if (GetPartitionType() == SwitchInfoProto::HYBRID) {
+                // We can already switch so we can send the round number to the other full genuine partition.
+                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
+                delete protocol_switch_info_;
+                protocol_switch_info_ = NULL;
+            } else {
+                assert(false);
+            }
         } else if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_MEC_SYNCHRO) {
             assert(configuration_->partitions_protocol[protocol_switch_info_->partition_id] == TxnProto::TRANSITION);
             configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
 
-            std::cout << "nice!! " << batch_count_ << "\n";
+            // std::cout << "nice!! " << batch_count_ << "\n";
             delete protocol_switch_info_;
             protocol_switch_info_ = NULL;
         }
