@@ -7,6 +7,9 @@ message TxnProto {
   // Globally unique transaction id, specifying global order.
   required int64 txn_id = 1;
 
+  // The partition that initiated the transaction.
+  optional int32 source_partition = 2;
+
   // Specifies which stored procedure to invoke at execution time.
   optional int32 txn_type = 10;
 
@@ -79,12 +82,4 @@ message TxnProto {
     TRANSITION = 3;
   };
   map<int32, ProtocolType> protocols = 50;
-
-  // Huge disgusting hack.
-  enum TxnPurpose {
-    TXN = 0;
-    PROTOCOL_SWITCH = 1;
-  }
-  optional TxnPurpose txn_purpose = 60 [default = TXN];
-
 }

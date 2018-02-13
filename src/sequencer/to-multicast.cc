@@ -306,43 +306,49 @@ void TOMulticast::IncrementLogicalClock() {
 }
 
 bool TOMulticast::HasTxnForPartition(int partition_id) {
+    auto this_partition_id = configuration_->this_node_partition;
+
+    // Avoid useless replication.
+    std::function<bool(TxnProto *txn)> testLowLatency =
+        [partition_id, this_partition_id](TxnProto *txn) {
+            auto protocols = txn->protocols();
+            if (protocols.find(partition_id) != protocols.end()) {
+                if (protocols[partition_id] == TxnProto::LOW_LATENCY && txn->source_partition() == this_partition_id) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+    bool hasLowLatency = false;
+
     // Checking `waiting_vote_operations_` queue.
     for (auto txn_info: waiting_vote_operations_) {
-        auto parts = Utils::GetInvolvedPartitions(txn_info.second);
-        if (std::find(parts.begin(), parts.end(), partition_id) != parts.end()) {
-            return true;
-        }
+        hasLowLatency = hasLowLatency || testLowLatency(txn_info.second);
     }
 
     std::function<bool(pair<TxnProto*, TOMulticastState>)> getter =
-        [partition_id](pair<TxnProto*, TOMulticastState> a) {
-            auto txn = a.first;
-            auto parts = Utils::GetInvolvedPartitions(txn);
-            if (std::find(parts.begin(), parts.end(), partition_id) != parts.end()) {
-                return true;
+        [testLowLatency](pair<TxnProto*, TOMulticastState> a) {
+            auto test = testLowLatency(a.first);
+            if (test) {
+                std::cout << "test: " << a.first->txn_id() << "\n" << std::flush;
             }
-            return false;
+            return test;
         };
     std::function<bool(bool, bool)> reducer =
         [](bool acc, bool a) {
             return acc || a;
         };
-
-    if (pending_operations_.Reduce(getter, reducer)) {
-        return true;
-    }
+    auto hack = false;
+    hasLowLatency = hasLowLatency || pending_operations_.Reduce(getter, reducer, &hack);
 
     pthread_mutex_lock(&decided_mutex_);
     for (auto txn: decided_operations_) {
-        auto parts = Utils::GetInvolvedPartitions(txn);
-        if (std::find(parts.begin(), parts.end(), partition_id) != parts.end()) {
-            return true;
-        }
-
+        hasLowLatency = hasLowLatency || testLowLatency(txn);
     }
     pthread_mutex_unlock(&decided_mutex_);
 
-    return false;
+    return hasLowLatency;
 }
 
 TOMulticastSchedulerInterface::TOMulticastSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client) {

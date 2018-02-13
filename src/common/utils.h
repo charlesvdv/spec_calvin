@@ -655,11 +655,14 @@ public:
     }
 
     template<typename R>
-    R Reduce(std::function<R(T)> getter, std::function<R(R, R)> reducer) {
+    R Reduce(std::function<R(T)> getter, std::function<R(R, R)> reducer, R *initial_value = NULL) {
         Lock f(&front_mutex_);
         Lock b(&back_mutex_);
 
         R result;
+        if (initial_value != NULL) {
+          result = *initial_value;
+        }
         for(uint32 i = front_; i != back_; i = (i+1) % size_) {
             result = reducer(result, getter(queue_[i]));
         }
