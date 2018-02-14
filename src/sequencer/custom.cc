@@ -411,6 +411,9 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
         }
     }
 
+    // Map low latency partition.
+    bool launch_partition_mapping = false;
+
     MessageProto msg;
     while(switch_connection_->GetMessage(&msg)) {
         assert(msg.type() == MessageProto::SWITCH_PROTOCOL);
@@ -473,8 +476,9 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                     protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_LOW_LATENCY;
                 } else {
                     // Out-of-sync partition.
-                    protocol_switch_info_->state = ProtocolSwitchState::WAITING_NETWORK_SURVEY;
-                    // TODO: survey network...
+                    protocol_switch_info_->state = ProtocolSwitchState::NETWORK_MAPPING;
+                    protocol_switch_info_->partition_mapping[configuration_->this_node_partition] = 0;
+                    launch_partition_mapping = true;
                 }
             }
             std::cout << "init round num: " << batch_count_ << "\n" << std::flush;
@@ -483,8 +487,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             protocol_switch_info_ = NULL;
 
             // Reinsert transitions to retry it.
-            configuration_->this_node_protocol_switch.push(std::make_pair(partition_id, GetTime() + 3));
-
+            configuration_->this_node_protocol_switch.push(std::make_pair(protocol_switch_info_->partition_id, GetTime() + 3));
         } else if (switch_info.type() == SwitchInfoProto::GENUINE_SWITCH_ROUND_VOTE) {
             auto switching_round = switch_info.switching_round();
             protocol_switch_info_->switching_round =
@@ -496,8 +499,59 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             }
         } else if (switch_info.type() == SwitchInfoProto::MEC_SYNCHRONIZED) {
             protocol_switch_info_->remote_mec_synchro = true;
+        } else if (switch_info.type() == SwitchInfoProto::LOW_LATENCY_MAPPING_REQUEST) {
+            launch_partition_mapping = true;
+            auto partition_mapping = switch_info.partition_mapping();
+            if (protocol_switch_info_ == NULL) {
+                protocol_switch_info_ = new ProtocolSwitchInfo();
+                protocol_switch_info_->state = ProtocolSwitchState::NETWORK_MAPPING;
+                protocol_switch_info_->partition_mapping = map<int, int>(partition_mapping.begin(), partition_mapping.end());
+            } else {
+                for (auto mapping: partition_mapping) {
+                    // We found the initial partition since it's distance is 0.
+                    if (mapping.second == 0) {
+                        if (protocol_switch_info_->partition_mapping.count(mapping.first) == 0
+                                || protocol_switch_info_->partition_mapping[mapping.first] != 0) {
+                            // We don't have the same
+                        }
+                    }
+                }
+            }
+        } else if (switch_info.type() == SwitchInfoProto::LOW_LATENCY_MAPPING_RESPONSE) {
+
         } else {
             assert(false);
+        }
+    }
+
+    if (launch_partition_mapping) {
+        auto &partition_mapping = protocol_switch_info_->partition_mapping;
+        auto this_partition_hop_count = partition_mapping[configuration_->this_node_partition];
+        for (auto part: configuration_->partitions_protocol) {
+            if (part.second != TxnProto::LOW_LATENCY) {
+                continue;
+            }
+
+            auto partition_id = part.first;
+            auto require_mapping = false;
+            if (partition_mapping.count(partition_id) == 0) {
+                // The partition is unknow from the mapping.
+                require_mapping = true;
+            } else if (partition_mapping[partition_id] > (this_partition_hop_count + 1)) {
+                // We have a shorter path.
+                require_mapping = true;
+            }
+
+            if (require_mapping) {
+                partition_mapping[partition_id] = this_partition_hop_count + 1;
+
+                SwitchInfoProto switch_info = SwitchInfoProto();
+                switch_info.set_type(SwitchInfoProto::LOW_LATENCY_MAPPING_REQUEST);
+                for (auto mapping_val: partition_mapping) {
+                    (*switch_info.mutable_partition_mapping())[mapping_val.first] = mapping_val.second;
+                }
+                SendSwitchMsg(&switch_info, partition_id);
+            }
         }
     }
 }

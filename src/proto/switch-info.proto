@@ -14,6 +14,12 @@ message SwitchInfoProto {
     ABORT = 2;
     GENUINE_SWITCH_ROUND_VOTE = 3;
     MEC_SYNCHRONIZED = 4;
+    LOW_LATENCY_MAPPING_REQUEST = 5;
+    LOW_LATENCY_MAPPING_RESPONSE = 6;
   };
   optional MessageType type = 4;
+
+  // Key: partition id
+  // Value: hop count from switching partitions.
+  map<int32, int32> partition_mapping = 5;
 }

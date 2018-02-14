@@ -39,7 +39,7 @@ enum class ProtocolSwitchState {
     // // using LOW_LATENCY.
     // WAITING_MEC_SYNCHRO,
     // // Wait for network survey result.
-    WAITING_NETWORK_SURVEY,
+    NETWORK_MAPPING,
 
     MEC_SYNCHRO,
 };
@@ -56,12 +56,13 @@ public:
 
     int switching_round;
 
-    // Flag that informs if a switch request has been executed.
-    // bool genuine_executed = false;
-
     // Informs if MEC is synchronized with the execution (see ProtocolSwitchState::MEC_SYNCHRO).
     bool local_mec_synchro = false;
     bool remote_mec_synchro = false;
+
+    // Key: partition id
+    // Value: hop count from switching partitions.
+    map<int, int> partition_mapping;
 };
 
 #endif
