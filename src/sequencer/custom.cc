@@ -369,6 +369,12 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 std::cout << "current round: " << batch_count_ << "\n" << std::flush;
                 delete protocol_switch_info_;
                 protocol_switch_info_ = NULL;
+            } else if (protocol_switch_info_->state == ProtocolSwitchState::WAIT_ROUND_TO_SWITCH) {
+                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
+                batch_count_ = protocol_switch_info_->final_round;
+
+                delete protocol_switch_info_;
+                protocol_switch_info_ = NULL;
             }
         }
         if (protocol_switch_info_ != NULL && protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_LOW_LATENCY) {
@@ -411,8 +417,11 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
         }
     }
 
+    // Flags used for genuine -> low latency unsynchronized.
+
     // Map low latency partition.
     bool launch_partition_mapping = false;
+    bool launch_switching_round_propagation = false;
 
     MessageProto msg;
     while(switch_connection_->GetMessage(&msg)) {
@@ -475,9 +484,18 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                     // In-sync partition.
                     protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_LOW_LATENCY;
                 } else {
+                    std::cout << "ookokokko\n" << std::flush;
                     // Out-of-sync partition.
                     protocol_switch_info_->state = ProtocolSwitchState::NETWORK_MAPPING;
                     protocol_switch_info_->partition_mapping[configuration_->this_node_partition] = 0;
+
+                    // Generate unique id from the two partition id involved in the switch.
+                    auto this_partition_id = configuration_->this_node_partition;
+                    int low = (this_partition_id < partition_id ? this_partition_id : partition_id);
+                    int high = (this_partition_id < partition_id ? partition_id : this_partition_id);
+                    protocol_switch_info_->mapping_id = (((long)high) << 32) + (long)low;
+                    protocol_switch_info_->switching_round = 0;
+
                     launch_partition_mapping = true;
                 }
             }
@@ -506,19 +524,56 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 protocol_switch_info_ = new ProtocolSwitchInfo();
                 protocol_switch_info_->state = ProtocolSwitchState::NETWORK_MAPPING;
                 protocol_switch_info_->partition_mapping = map<int, int>(partition_mapping.begin(), partition_mapping.end());
-            } else {
-                for (auto mapping: partition_mapping) {
-                    // We found the initial partition since it's distance is 0.
-                    if (mapping.second == 0) {
-                        if (protocol_switch_info_->partition_mapping.count(mapping.first) == 0
-                                || protocol_switch_info_->partition_mapping[mapping.first] != 0) {
-                            // We don't have the same
-                        }
-                    }
+                protocol_switch_info_->mapping_id = switch_info.mapping_id();
+            } else if (protocol_switch_info_->mapping_id != switch_info.mapping_id()) {
+                // Abort.
+                delete protocol_switch_info_;
+                protocol_switch_info_ = NULL;
+
+                // TODO: dispatch abort message or reset message.
+                continue;
+            }
+            assert(protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING);
+            for (auto map_info: switch_info.partition_mapping()) {
+                if (protocol_switch_info_->partition_mapping.count(map_info.first) == 0) {
+                    protocol_switch_info_->partition_mapping.insert(map_info);
+                } else {
+                    // Update with the smallest hop count.
+                    protocol_switch_info_->partition_mapping[map_info.first] = std::min(
+                        protocol_switch_info_->partition_mapping[map_info.first],
+                        map_info.second
+                    );
                 }
             }
         } else if (switch_info.type() == SwitchInfoProto::LOW_LATENCY_MAPPING_RESPONSE) {
+            protocol_switch_info_->partition_mapping_response_count += 1;
 
+            // Update information received.
+            assert(protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING);
+            for (auto map_info: switch_info.partition_mapping()) {
+                if (protocol_switch_info_->partition_mapping.count(map_info.first) == 0) {
+                    protocol_switch_info_->partition_mapping.insert(map_info);
+                } else {
+                    // Update with the smallest hop count.
+                    protocol_switch_info_->partition_mapping[map_info.first] = std::min(
+                        protocol_switch_info_->partition_mapping[map_info.first],
+                        map_info.second
+                    );
+                }
+            }
+        } else if (switch_info.type() == SwitchInfoProto::LOW_LATENCY_MAPPING_FINISHED) {
+            protocol_switch_info_->remote_mapping_finished = true;
+        } else if (switch_info.type() == SwitchInfoProto::LOW_LATENCY_ROUND_VOTE) {
+            if (protocol_switch_info_->final_round != 0) {
+                launch_switching_round_propagation = true;
+            }
+            protocol_switch_info_->final_round = std::max(
+                protocol_switch_info_->final_round,
+                switch_info.final_round()
+            );
+            if (switch_info.has_switching_round()) {
+                protocol_switch_info_->switching_round = switch_info.switching_round();
+            }
         } else {
             assert(false);
         }
@@ -550,6 +605,103 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 for (auto mapping_val: partition_mapping) {
                     (*switch_info.mutable_partition_mapping())[mapping_val.first] = mapping_val.second;
                 }
+                switch_info.set_mapping_id(protocol_switch_info_->mapping_id);
+                SendSwitchMsg(&switch_info, partition_id);
+            }
+        }
+    }
+
+    // Check if we can respond to our network mapping.
+    if (protocol_switch_info_ != NULL && protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING) {
+        int response_count_required = 0;
+        int this_partition_hop_count = protocol_switch_info_->partition_mapping[configuration_->this_node_partition];
+        vector<int> response_receivers;
+        for (auto partition_info: configuration_->partitions_protocol) {
+            if (partition_info.second != TxnProto::LOW_LATENCY) {
+                continue;
+            }
+            if ((this_partition_hop_count + 1) == protocol_switch_info_->partition_mapping[partition_info.first]) {
+                // We need to wait for its response because it's our neighbour.
+                response_count_required++;
+            }
+            if ((this_partition_hop_count - 1) == protocol_switch_info_->partition_mapping[partition_info.first]) {
+                // We need to send a response to this partition because it's our parent.
+                response_receivers.push_back(partition_info.first);
+            }
+        }
+
+        // We can respond to our parents.
+        if (protocol_switch_info_->partition_mapping_response_count <= response_count_required) {
+            SwitchInfoProto switch_info = SwitchInfoProto();
+            for (auto mapping_val: protocol_switch_info_->partition_mapping) {
+                (*switch_info.mutable_partition_mapping())[mapping_val.first] = mapping_val.second;
+            }
+            switch_info.set_mapping_id(protocol_switch_info_->mapping_id);
+
+            if (protocol_switch_info_->partition_mapping[configuration_->this_node_partition] == 0) {
+                // We finished our mapping.
+                protocol_switch_info_->state = ProtocolSwitchState::WAIT_NETWORK_MAPPING_RESPONSE;
+                protocol_switch_info_->local_mapping_finished = true;
+
+                // int max_hop = 0;
+                // for (auto hop_info: protocol_switch_info_->partition_mapping) {
+                    // max_hop = std::max(max_hop, hop_info.second);
+                // }
+                // switch_info.set_switching_round(batch_count_ + max_hop + SWITCH_ROUND_WITH_MAPPING);
+
+                switch_info.set_type(SwitchInfoProto::LOW_LATENCY_MAPPING_FINISHED);
+                SendSwitchMsg(&switch_info, protocol_switch_info_->partition_id);
+            } else {
+                switch_info.set_type(SwitchInfoProto::LOW_LATENCY_MAPPING_RESPONSE);
+                for (auto part: response_receivers) {
+                    SendSwitchMsg(&switch_info, part);
+                }
+                protocol_switch_info_->state = ProtocolSwitchState::WAIT_SWITCHING_ROUND_INFO;
+            }
+        }
+    }
+
+    if (protocol_switch_info_ != NULL && protocol_switch_info_->state == ProtocolSwitchState::WAIT_NETWORK_MAPPING_RESPONSE &&
+            protocol_switch_info_->local_mapping_finished && protocol_switch_info_->remote_mapping_finished) {
+        int max_hop = 0;
+        for (auto hop_info: protocol_switch_info_->partition_mapping) {
+            max_hop = std::max(max_hop, hop_info.second);
+        }
+        auto switching_round_without_margin = batch_count_ + max_hop;
+
+        if (protocol_switch_info_->final_round != 0) {
+            launch_switching_round_propagation = true;
+        }
+        protocol_switch_info_->switching_round = protocol_switch_info_->switching_round;
+        protocol_switch_info_->final_round = std::max(
+            protocol_switch_info_->final_round,
+            switching_round_without_margin + SWITCH_ROUND_WITH_MAPPING
+        );
+
+        SwitchInfoProto switch_info = SwitchInfoProto();
+        switch_info.set_type(SwitchInfoProto::LOW_LATENCY_ROUND_VOTE);
+        switch_info.set_final_round(protocol_switch_info_->final_round);
+        SendSwitchMsg(&switch_info, protocol_switch_info_->partition_id);
+    }
+
+    if (launch_switching_round_propagation) {
+        launch_switching_round_propagation = false;
+        protocol_switch_info_->state = ProtocolSwitchState::WAIT_ROUND_TO_SWITCH;
+
+        int this_partition_hop_count = protocol_switch_info_->partition_mapping[configuration_->this_node_partition];
+
+        SwitchInfoProto switch_info = SwitchInfoProto();
+        switch_info.set_type(SwitchInfoProto::LOW_LATENCY_ROUND_VOTE);
+        switch_info.set_final_round(protocol_switch_info_->final_round);
+        switch_info.set_switching_round(protocol_switch_info_->switching_round);
+        for (auto protocol: configuration_->partitions_protocol) {
+            if (protocol.first != TxnProto::LOW_LATENCY) {
+                continue;
+            }
+
+            auto partition_id = protocol.first;
+            if ((this_partition_hop_count + 1) == protocol_switch_info_->partition_mapping[partition_id]) {
+                // We can inform our child.
                 SendSwitchMsg(&switch_info, partition_id);
             }
         }

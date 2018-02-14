@@ -10,7 +10,8 @@
 
 // Round increase to propose a future round for round switching.
 #define SWITCH_ROUND_DELTA 10
-#define HYBRID_SYNCED_MAX_DELTA 3
+#define SWITCH_ROUND_WITH_MAPPING 30
+#define HYBRID_SYNCED_MAX_DELTA 2
 
 enum class ProtocolSwitchState {
     // Initialize transaction.
@@ -38,10 +39,20 @@ enum class ProtocolSwitchState {
     // // Just wait one round to synchronize mec before
     // // using LOW_LATENCY.
     // WAITING_MEC_SYNCHRO,
-    // // Wait for network survey result.
+
+    // Wait for synchronization of the MEC.
+    MEC_SYNCHRO,
+
+    // Wait for network survey result.
     NETWORK_MAPPING,
 
-    MEC_SYNCHRO,
+    // Wait for the other partition to finish its mapping.
+    WAIT_NETWORK_MAPPING_RESPONSE,
+
+    // Wait for round vote.
+    WAIT_SWITCHING_ROUND_INFO,
+
+    WAIT_ROUND_TO_SWITCH,
 };
 
 class ProtocolSwitchInfo {
@@ -54,7 +65,7 @@ public:
     int partition_id;
     SwitchInfoProto::PartitionType partition_type;
 
-    int switching_round;
+    int switching_round = 0;
 
     // Informs if MEC is synchronized with the execution (see ProtocolSwitchState::MEC_SYNCHRO).
     bool local_mec_synchro = false;
@@ -63,6 +74,14 @@ public:
     // Key: partition id
     // Value: hop count from switching partitions.
     map<int, int> partition_mapping;
+    long mapping_id;
+    int partition_mapping_response_count = 0;
+
+    // Informs if we finished or not the low latency partition mapping.
+    bool local_mapping_finished = false;
+    bool remote_mapping_finished = false;
+
+    int final_round = 0;
 };
 
 #endif
