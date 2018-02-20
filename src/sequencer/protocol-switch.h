@@ -62,7 +62,7 @@ public:
     ProtocolSwitchState state;
 
     // Information about the other partition.
-    int partition_id;
+    int partition_id = -1;
     SwitchInfoProto::PartitionType partition_type;
 
     int switching_round = 0;

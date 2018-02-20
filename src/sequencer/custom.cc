@@ -357,9 +357,16 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_LOW_LATENCY;
             }
         }
+        if (protocol_switch_info_ != NULL && protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_LOW_LATENCY) {
+            configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
+
+            std::cout << "current round: " << batch_count_ << "\n" << std::flush;
+            delete protocol_switch_info_;
+            protocol_switch_info_ = NULL;
+        }
 
         // To avoid use-after-free pointer exception, delete protocol_switch_info_ only at the end.
-        if (protocol_switch_info_->switching_round == batch_count_) {
+        if (protocol_switch_info_ != NULL && protocol_switch_info_->switching_round == batch_count_) {
             if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_GENUINE_TRANSITION) {
                 configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
                 protocol_switch_info_->state = ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION;
@@ -371,21 +378,22 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 delete protocol_switch_info_;
                 protocol_switch_info_ = NULL;
             } else if (protocol_switch_info_->state == ProtocolSwitchState::WAIT_ROUND_TO_SWITCH) {
-                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
                 batch_count_ = protocol_switch_info_->final_round;
+
+                // Only update partition which need to switch from protocols and not every partitions inside
+                // low latency mapping.
+                if (protocol_switch_info_->partition_id != -1) {
+                    // Force one round with no calvin partition to sync MEC.
+                    configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
+                    protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_LOW_LATENCY;
+                } else {
+                    delete protocol_switch_info_;
+                    protocol_switch_info_ = NULL;
+                }
 
                 std::cout << "current round: " << batch_count_ << "\n" << std::flush;
 
-                delete protocol_switch_info_;
-                protocol_switch_info_ = NULL;
             }
-        }
-        if (protocol_switch_info_ != NULL && protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_LOW_LATENCY) {
-            configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
-
-            std::cout << "current round: " << batch_count_ << "\n" << std::flush;
-            delete protocol_switch_info_;
-            protocol_switch_info_ = NULL;
         }
     }
 
