@@ -20,6 +20,7 @@ def main():
         print('Not ordered.')
 
     print('Offsets: {}'.format([x+1 for x in offsets]))
+    print('Total: {}'.format(len(data)))
 
     for f in files:
         f.close()
@@ -27,21 +28,29 @@ def main():
 
 def ordered(data, offsets):
     while(True):
+        hasTxnExecuted = False
         for p, offset in enumerate(offsets):
             txn = data[offset][p]
+            if txn is None:
+                continue
 
             for partition in txn['nodes']:
-                if data[offsets[partition]][partition]['id'] != txn['id']:
-                    break
-            else:
+                val = data[offsets[partition]][partition]
+
+                if val is None or val['id'] != txn['id']:
+                    executable = False
+            if executable:
+                hasTxnExecuted = True
                 print('Execute', txn['id'], 'successfully!')
                 for partition in txn['nodes']:
                     offsets[partition] += 1
-                    if offsets[partition] == len(data):
-                        return True
                 break
-        else:
+        if not hasTxnExecuted:
+            for i in range(len(offsets)):
+                if data[offsets[i]][i] is None:
+                    return True
             return False
+    return False
 
 
 def parse_files(files):
@@ -51,10 +60,15 @@ def parse_files(files):
         for f in files:
             line = f.readline().strip()
             if not line:
-                return data
-            data_line.append(parse_line(line))
+                data_line.append(None)
+            else:
+                data_line.append(parse_line(line))
 
-        data.append(data_line)
+        if all(x is None for x in data_line):
+            return data
+        else:
+            data.append(data_line)
+
     return data
 
 
