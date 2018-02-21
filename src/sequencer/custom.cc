@@ -407,10 +407,10 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
     // And initialize it.
     if (configuration_->this_node_protocol_switch.size()) {
         auto next_switch = configuration_->this_node_protocol_switch.top();
+        // std::cout << "okokok " << next_switch.second <<  << std::flush;
         if ((GetTime() - start_time_) >= next_switch.second) {
             // TODO: intra-partition replication of switch_info
 
-            // std::cout << "executing: " << next_switch.first << "\n" << std::flush;
             int partition_id = next_switch.first;
             SwitchInfoProto switch_info;
             switch_info.set_partition_type(GetPartitionType());
@@ -476,7 +476,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 SwitchInfoProto info = SwitchInfoProto();
                 info.set_type(SwitchInfoProto::ABORT);
 
-                SendSwitchMsg(&info);
+                SendSwitchMsg(&info, partition_id);
                 continue;
             }
 
@@ -544,10 +544,11 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             // Really bad if it's happening because we should only be in the mapping
             // process and not already decided.
             assert(protocol_switch_info_->state != ProtocolSwitchState::WAIT_SWITCHING_ROUND_INFO);
+            std::cout << configuration_->this_node_partition << " aborded!\n" << std::flush;
 
             if (protocol_switch_info_->partition_id != -1) {
                 // Reinsert transitions to retry it.
-                configuration_->this_node_protocol_switch.push(std::make_pair(protocol_switch_info_->partition_id, GetTime() + 3));
+                configuration_->this_node_protocol_switch.push(std::make_pair(protocol_switch_info_->partition_id, (GetTime() + 3) - start_time_));
             } else if (protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING ||
                     protocol_switch_info_->state == ProtocolSwitchState::WAIT_NETWORK_MAPPING_RESPONSE) {
                 // We need to warn the starting partitions that we are going to stop the network mapping.
@@ -563,6 +564,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             delete protocol_switch_info_;
             protocol_switch_info_ = NULL;
         } else if (switch_info.type() == SwitchInfoProto::ABORT_MAPPING) {
+            std::cout << configuration_->this_node_partition << " aborded mapping!\n" << std::flush;
             auto this_partition_hop_count = protocol_switch_info_->partition_mapping[configuration_->this_node_partition];
 
             SwitchInfoProto abort_msg = SwitchInfoProto();
