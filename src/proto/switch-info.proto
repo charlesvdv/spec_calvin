@@ -18,6 +18,7 @@ message SwitchInfoProto {
     LOW_LATENCY_MAPPING_RESPONSE = 6;
     LOW_LATENCY_MAPPING_FINISHED = 7;
     LOW_LATENCY_ROUND_VOTE = 8;
+    ABORT_MAPPING = 9;
   };
   optional MessageType type = 4;
 

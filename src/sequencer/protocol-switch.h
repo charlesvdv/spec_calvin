@@ -11,7 +11,7 @@
 // Round increase to propose a future round for round switching.
 #define SWITCH_ROUND_DELTA 10
 #define SWITCH_ROUND_WITH_MAPPING 15
-#define HYBRID_SYNCED_MAX_DELTA 2
+#define HYBRID_SYNCED_MAX_DELTA 1
 
 enum class ProtocolSwitchState {
     // Initialize transaction.
@@ -67,6 +67,8 @@ public:
     SwitchInfoProto::PartitionType partition_type;
 
     int switching_round = 0;
+
+    int init_round_num = 0;
 
     // Informs if MEC is synchronized with the execution (see ProtocolSwitchState::MEC_SYNCHRO).
     bool local_mec_synchro = false;
