@@ -304,6 +304,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
     // Check if we can update state of the protocol.
     if (protocol_switch_info_ != NULL) {
         std::cout << static_cast<int>(protocol_switch_info_->state) << "\n" << std::flush;
+
         // Partition p is in TRANSITION state and we are waiting that any hybrid MPO requiring
         // genuine dispatching with p has been dispatched.
         if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION) {
@@ -339,9 +340,6 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             }
         }
 
-        // if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_NETWORK_SURVEY) {
-        // }
-
         // Some transactions got executed which means transaction execution is synchronized with the MEC.
         if (protocol_switch_info_->state == ProtocolSwitchState::MEC_SYNCHRO && got_txns_executed) {
             if (!protocol_switch_info_->local_mec_synchro) {
@@ -357,6 +355,8 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_LOW_LATENCY;
             }
         }
+
+        // We can switch to low latency.
         if (protocol_switch_info_ != NULL && protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_LOW_LATENCY) {
             configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
 
@@ -365,7 +365,6 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             protocol_switch_info_ = NULL;
         }
 
-        // To avoid use-after-free pointer exception, delete protocol_switch_info_ only at the end.
         if (protocol_switch_info_ != NULL && protocol_switch_info_->switching_round == batch_count_) {
             if (protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_GENUINE_TRANSITION) {
                 configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
@@ -439,6 +438,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
     bool launch_partition_mapping = false;
     bool launch_switching_round_propagation = false;
 
+    // Handle message.
     MessageProto msg;
     while(switch_connection_->GetMessage(&msg)) {
         assert(msg.type() == MessageProto::SWITCH_PROTOCOL);
@@ -449,12 +449,10 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
         std::cout << switch_info.DebugString() << "\n" << std::flush;
         if (switch_info.type() == SwitchInfoProto::INIT_MSG) {
             // Check whether this partition is the initializer of this msg.
-            // auto is_initializer = true;
             if (protocol_switch_info_ == NULL) {
                 auto max_switching_round = std::max(switch_info.switching_round(), batch_count_ + SWITCH_ROUND_DELTA);
                 switch_info.set_switching_round(max_switching_round);
 
-                // is_initializer = false;
                 protocol_switch_info_ = new ProtocolSwitchInfo();
                 protocol_switch_info_->partition_id = partition_id;
 
