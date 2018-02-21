@@ -39,6 +39,7 @@ enum class ProtocolSwitchState {
     // // Just wait one round to synchronize mec before
     // // using LOW_LATENCY.
     // WAITING_MEC_SYNCHRO,
+    IN_SYNC_WAIT_ROUND_TO_SWITCH,
 
     // Wait for synchronization of the MEC.
     MEC_SYNCHRO,

@@ -392,7 +392,12 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 }
 
                 std::cout << "current round: " << batch_count_ << "\n" << std::flush;
+            } else if (protocol_switch_info_->state == ProtocolSwitchState::IN_SYNC_WAIT_ROUND_TO_SWITCH) {
+                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
 
+                std::cout << "current round: " << batch_count_ << "\n" << std::flush;
+                delete protocol_switch_info_;
+                protocol_switch_info_ = NULL;
             }
         }
     }
@@ -484,9 +489,24 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                     protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_LOW_LATENCY;
                 } else if (GetPartitionType() == SwitchInfoProto::FULL_GENUINE) {
                     assert(switch_info.partition_type() == SwitchInfoProto::HYBRID);
-                    batch_count_ = switch_info.current_round();
+
                     configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
                     protocol_switch_info_->state = ProtocolSwitchState::MEC_SYNCHRO;
+
+                    // Wait for the first low latency message to synchronize round number.
+                    while (true) {
+                        MessageProto *rcv_msg = new MessageProto();
+                        if (connection_->GetMessage(rcv_msg)) {
+                            assert(rcv_msg->type() == MessageProto::TXN_BATCH);
+                            batch_messages_[rcv_msg->batch_number()].push_back(rcv_msg);
+                            if (configuration_->NodePartition(rcv_msg->source_node()) == protocol_switch_info_->partition_id) {
+                                batch_count_ = rcv_msg->batch_number();
+                                break;
+                            }
+                        } else {
+                            Spin(0.02);
+                        }
+                    }
                 } else if (switch_info.partition_type() == SwitchInfoProto::FULL_GENUINE) {
                     assert(GetPartitionType() == SwitchInfoProto::HYBRID);
                     configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
@@ -494,7 +514,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 } else if (std::abs(batch_count_ - switch_info.current_round()) <= HYBRID_SYNCED_MAX_DELTA) {
                     std::cout << "in-sync !!!\n";
                     // In-sync partition.
-                    protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_LOW_LATENCY;
+                    protocol_switch_info_->state = ProtocolSwitchState::IN_SYNC_WAIT_ROUND_TO_SWITCH;
                 } else {
                     std::cout << "out-of-sync !!!\n" << std::flush;
                     // Out-of-sync partition.
