@@ -423,7 +423,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             // Postpone switching if we are currently in one.
             // otherwise, remove switching info.
             if (protocol_switch_info_ != NULL) {
-                next_switch.second += 2;
+                next_switch.second += 1;
             } else {
                 std::cout << "dispatched!! " << next_switch.first << "\n"  << std::flush;
                 SendSwitchMsg(&switch_info, partition_id);
@@ -552,7 +552,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             if (protocol_switch_info_->partition_id != -1) {
                 // Reinsert transitions to retry it.
                 configuration_->this_node_protocol_switch.push(
-                    std::make_pair(protocol_switch_info_->partition_id, (GetTime() + 3) - start_time_)
+                    std::make_pair(protocol_switch_info_->partition_id, (GetTime() + 1) - start_time_)
                 );
             } else if (protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING ||
                     protocol_switch_info_->state == ProtocolSwitchState::WAIT_NETWORK_MAPPING_RESPONSE) {
