@@ -305,7 +305,8 @@ void CustomSequencer::output(DeterministicScheduler *scheduler) {
 void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
     // Check if we can update state of the protocol.
     if (protocol_switch_info_ != NULL) {
-        std::cout << static_cast<int>(protocol_switch_info_->state) << "\n" << std::flush;
+        std::cout << static_cast<int>(protocol_switch_info_->state)
+            << " " << protocol_switch_info_->partition_id << "\n" << std::flush;
 
         // Partition p is in TRANSITION state and we are waiting that any hybrid MPO requiring
         // genuine dispatching with p has been dispatched.
@@ -394,11 +395,12 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
                 std::cout << "current round: " << batch_count_ << "\n" << std::flush;
             } else if (protocol_switch_info_->state == ProtocolSwitchState::IN_SYNC_WAIT_ROUND_TO_SWITCH) {
-                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
+                configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
+                protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_LOW_LATENCY;
 
-                std::cout << "current round: " << batch_count_ << "\n" << std::flush;
-                delete protocol_switch_info_;
-                protocol_switch_info_ = NULL;
+                // std::cout << "current round: " << batch_count_ << "\n" << std::flush;
+                // delete protocol_switch_info_;
+                // protocol_switch_info_ = NULL;
             }
         }
     }
@@ -407,9 +409,9 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
     // And initialize it.
     if (configuration_->this_node_protocol_switch.size()) {
         auto next_switch = configuration_->this_node_protocol_switch.top();
-        // std::cout << "okokok " << next_switch.second <<  << std::flush;
         if ((GetTime() - start_time_) >= next_switch.second) {
             // TODO: intra-partition replication of switch_info
+            std::cout << "okokok " << next_switch.first << "\n" << std::flush;
 
             int partition_id = next_switch.first;
             SwitchInfoProto switch_info;
@@ -423,6 +425,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             if (protocol_switch_info_ != NULL) {
                 next_switch.second += 2;
             } else {
+                std::cout << "dispatched!! " << next_switch.first << "\n"  << std::flush;
                 SendSwitchMsg(&switch_info, partition_id);
 
                 protocol_switch_info_ = new ProtocolSwitchInfo();
@@ -548,7 +551,9 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
             if (protocol_switch_info_->partition_id != -1) {
                 // Reinsert transitions to retry it.
-                configuration_->this_node_protocol_switch.push(std::make_pair(protocol_switch_info_->partition_id, (GetTime() + 3) - start_time_));
+                configuration_->this_node_protocol_switch.push(
+                    std::make_pair(protocol_switch_info_->partition_id, (GetTime() + 3) - start_time_)
+                );
             } else if (protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING ||
                     protocol_switch_info_->state == ProtocolSwitchState::WAIT_NETWORK_MAPPING_RESPONSE) {
                 // We need to warn the starting partitions that we are going to stop the network mapping.
@@ -604,7 +609,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
                 continue;
             }
-            assert(protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING);
+            // assert(protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING);
             for (auto map_info: switch_info.partition_mapping()) {
                 if (protocol_switch_info_->partition_mapping.count(map_info.first) == 0) {
                     protocol_switch_info_->partition_mapping.insert(map_info);
@@ -663,6 +668,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
     if (launch_partition_mapping) {
         auto &partition_mapping = protocol_switch_info_->partition_mapping;
         auto this_partition_hop_count = partition_mapping[configuration_->this_node_partition];
+        vector<int> partition_mapping_required;
         for (auto part: configuration_->partitions_protocol) {
             if (part.second != TxnProto::LOW_LATENCY) {
                 continue;
@@ -680,15 +686,19 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
             if (require_mapping) {
                 partition_mapping[partition_id] = this_partition_hop_count + 1;
-
-                SwitchInfoProto switch_info = SwitchInfoProto();
-                switch_info.set_type(SwitchInfoProto::LOW_LATENCY_MAPPING_REQUEST);
-                for (auto mapping_val: partition_mapping) {
-                    (*switch_info.mutable_partition_mapping())[mapping_val.first] = mapping_val.second;
-                }
-                switch_info.set_mapping_id(protocol_switch_info_->mapping_id);
-                SendSwitchMsg(&switch_info, partition_id);
+                partition_mapping_required.push_back(partition_id);
             }
+        }
+
+        SwitchInfoProto switch_info = SwitchInfoProto();
+        switch_info.set_type(SwitchInfoProto::LOW_LATENCY_MAPPING_REQUEST);
+        for (auto mapping_val: partition_mapping) {
+            (*switch_info.mutable_partition_mapping())[mapping_val.first] = mapping_val.second;
+        }
+        switch_info.set_mapping_id(protocol_switch_info_->mapping_id);
+
+        for (auto part_id: partition_mapping_required) {
+            SendSwitchMsg(&switch_info, part_id);
         }
     }
 
