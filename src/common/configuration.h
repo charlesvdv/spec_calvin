@@ -64,8 +64,19 @@ public:
 };
 
 class Configuration {
-  public:
+public:
     Configuration(int node_id, const string &filename);
+    ~Configuration() {
+        // Dump configuration of protocol.
+        std::cout << "Low latency partition: ";
+        for (auto protocol_info: partitions_protocol) {
+            assert(protocol_info.second != TxnProto::TRANSITION);
+            if (protocol_info.second == TxnProto::LOW_LATENCY) {
+                std::cout << protocol_info.first << ":";
+            }
+        }
+        std::cout << "\n" << std::flush;
+    }
 
     // Returns the node_id of the partition at which 'key' is stored.
     int LookupPartition(const Key &key) const;
