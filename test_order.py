@@ -34,6 +34,7 @@ def ordered(data, offsets):
             if txn is None:
                 continue
 
+            executable = True
             for partition in txn['nodes']:
                 val = data[offsets[partition]][partition]
 
