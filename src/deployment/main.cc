@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
 
     PartitionDistribution *partition_distribution;
     if (ConfigReader::Value("partition_distribution") == "zipfian") {
-        partition_distribution = new ZipfianDistribution(&config, false);
+        partition_distribution = new ZipfianDistribution(&config, false, 2);
     } else {
         partition_distribution = new RandomDistribution(&config);
     }

@@ -142,6 +142,7 @@ void CustomSequencer::RunThread() {
             }
             connection_->Send(msg);
         }
+
         // -- 4. Collect low latency protocol message.
         int partition_num = configuration_->GetPartitionProtocolSize(TxnProto::LOW_LATENCY) +
             configuration_->GetPartitionProtocolSize(TxnProto::TRANSITION);
@@ -150,16 +151,18 @@ void CustomSequencer::RunThread() {
                   // << "round number: " << batch_count_ << "\n" << std::flush;
         while (batch_messages_[batch_count_].size() < unsigned(partition_num)) {
             MessageProto *rcv_msg = new MessageProto();
+            // std::cout << "waiting...\n" << std::flush;
             if (connection_->GetMessage(rcv_msg)) {
-                // std::cout <<
                 assert(rcv_msg->type() == MessageProto::TXN_BATCH);
                 batch_messages_[rcv_msg->batch_number()].push_back(rcv_msg);
             } else {
-                Spin(0.01);
-                partition_num = configuration_->GetPartitionProtocolSize(TxnProto::LOW_LATENCY) +
-                    configuration_->GetPartitionProtocolSize(TxnProto::TRANSITION);
+                // Spin(0.01);
+                Spin(0.5);
+                // partition_num = configuration_->GetPartitionProtocolSize(TxnProto::LOW_LATENCY) +
+                    // configuration_->GetPartitionProtocolSize(TxnProto::TRANSITION);
             }
         }
+        // std::cout << "okokok\n" << std::flush;
 
         // -- 5. Get global max executable clock and receive message inside the execution queue.
         auto max_clock = mec;
@@ -411,14 +414,11 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
         auto next_switch = configuration_->this_node_protocol_switch.top();
         if ((GetTime() - start_time_) >= next_switch.time) {
             // TODO: intra-partition replication of switch_info
-            // std::cout << "okokok " << next_switch.time << "\n" << std::flush;
-
-            // int partition_id = next_switch.first;
 
             // Postpone switching if we are currently in one.
             // otherwise, remove switching info.
             if (protocol_switch_info_ != NULL) {
-                next_switch.time += 1;
+                next_switch.time += (GetTime() - start_time_) + 1 + (rand() % 5);
             } else if (next_switch.protocol == configuration_->partitions_protocol[next_switch.partition_id]) {
                 // We are already in the good protocol...
                 configuration_->this_node_protocol_switch.pop();
@@ -535,6 +535,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                     // Out-of-sync partition.
                     protocol_switch_info_->state = ProtocolSwitchState::NETWORK_MAPPING;
                     protocol_switch_info_->partition_mapping[configuration_->this_node_partition] = 0;
+                    protocol_switch_info_->partition_mapping[protocol_switch_info_->partition_id] = 0;
 
                     // Generate unique id from the two partition id involved in the switch.
                     auto this_partition_id = configuration_->this_node_partition;
@@ -558,11 +559,13 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 configuration_->this_node_protocol_switch.push(
                     SwitchInfo((GetTime() + 1) - start_time_, protocol_switch_info_->partition_id, protocol_switch_info_->protocol)
                 );
-            } else if (protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING ||
+            }
+            if (protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING ||
                     protocol_switch_info_->state == ProtocolSwitchState::WAIT_NETWORK_MAPPING_RESPONSE) {
                 // We need to warn the starting partitions that we are going to stop the network mapping.
                 SwitchInfoProto abort_msg = SwitchInfoProto();
                 abort_msg.set_type(SwitchInfoProto::ABORT_MAPPING);
+                abort_msg.set_mapping_id(protocol_switch_info_->mapping_id);
                 for (auto mapping: protocol_switch_info_->partition_mapping) {
                     if (mapping.second == 0) {
                         SendSwitchMsg(&abort_msg, mapping.first);
@@ -572,7 +575,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
             delete protocol_switch_info_;
             protocol_switch_info_ = NULL;
-        } else if (switch_info.type() == SwitchInfoProto::ABORT_MAPPING) {
+        } else if (switch_info.type() == SwitchInfoProto::ABORT_MAPPING && switch_info.mapping_id() == protocol_switch_info_->mapping_id) {
             std::cout << configuration_->this_node_partition << " aborded mapping!\n" << std::flush;
             auto this_partition_hop_count = protocol_switch_info_->partition_mapping[configuration_->this_node_partition];
 
@@ -853,9 +856,9 @@ void CustomSequencerSchedulerInterface::RunClient() {
     std::ofstream cache_file(filename, std::ios_base::out);
 
     // Variables used for automatic switching.
-    // const int ROUND_DELTA = 10;
+    const int ROUND_DELTA = 50;
     map<int, int> partitions_count;
-    // int next_round = ROUND_DELTA;
+    int next_round = ROUND_DELTA;
 
     std::function<bool(std::pair<int, int>, std::pair<int, int>)> compFunc =
         [](std::pair<int, int> a, std::pair<int, int> b) {
@@ -899,13 +902,23 @@ void CustomSequencerSchedulerInterface::RunClient() {
         for (auto it = ordered_txns.begin(); it < ordered_txns.end(); it++) {
             // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
             // Format involved partitions.
-            auto nodes = Utils::GetInvolvedPartitions(*it);
-            for (auto part: nodes) {
-                partition_touched.insert(part);
+
+            auto involved_partitions = Utils::GetInvolvedPartitions(*it);
+
+            // Check which partitions was involved with this partition.
+            if ((*it)->source_partition() != configuration_->this_node_partition) {
+                partition_touched.insert((*it)->source_partition());
+            } else {
+                for (auto part: involved_partitions) {
+                    if (part != configuration_->this_node_partition) {
+                        partition_touched.insert(part);
+                    }
+                }
             }
+
             std::ostringstream ss;
-            std::copy(nodes.begin(), nodes.end() - 1, std::ostream_iterator<int>(ss, ","));
-            ss << nodes.back();
+            std::copy(involved_partitions.begin(), involved_partitions.end() - 1, std::ostream_iterator<int>(ss, ","));
+            ss << involved_partitions.back();
 
             cache_file << (*it)->txn_id() << ":" << ss.str() << ":" << (*it)->batch_number()
                 << ":" << (*it)->logical_clock() << "\n" << std::flush;
@@ -918,29 +931,52 @@ void CustomSequencerSchedulerInterface::RunClient() {
         }
 
         // Check if we need to switch some partitions.
-        // if (next_round <= batch_count_) {
-            // std::vector<std::pair<int, int>> data(partitions_count.begin(), partitions_count.end());
-            // std::sort(data.begin(), data.end(), compFunc);
+        if (next_round <= batch_count_) {
+            std::vector<std::pair<int, int>> data(partitions_count.begin(), partitions_count.end());
+            std::sort(data.begin(), data.end(), compFunc);
 
-            // for (auto it = data.rbegin(); it < data.rend(); it++) {
-                // auto part = (*it).first;
-                // auto val = (*it).second;
+            // Check if we need to switch to LOW_LATENCY for some partitions.
+            for (auto it = data.rbegin(); it < data.rend(); it++) {
+                auto part = (*it).first;
+                auto val = (*it).second;
 
-                // if (((double)val/ROUND_DELTA) >= 0.7) {
-                    // // We should switch...
-                    // if (configuration_->partitions_protocol[part] == TxnProto::GENUINE) {
+                if (((double)val/ROUND_DELTA) >= 0.9) {
+                    // We should switch...
+                    if (configuration_->partitions_protocol[part] == TxnProto::GENUINE) {
+                        configuration_->this_node_protocol_switch.push(
+                            SwitchInfo(0, part, TxnProto::LOW_LATENCY)
+                        );
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
 
-                    // }
-                // } else {
-                    // break;
-                // }
-            // }
+            // Check if we need to switch to GENUINE for some partitions.
+            for (auto it = data.begin(); it < data.end(); it++) {
+                auto part = (*it).first;
+                auto val = (*it).second;
 
-            // // Reset value
-            // partitions_count.clear();
-        // }
+                if (((double)val/ROUND_DELTA) <= 0.5) {
+                    // We should switch...
+                    if (configuration_->partitions_protocol[part] == TxnProto::LOW_LATENCY) {
+                        configuration_->this_node_protocol_switch.push(
+                            SwitchInfo(0, part, TxnProto::GENUINE)
+                        );
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
 
-        // batch_count_++;
+            // Reset value
+            partitions_count.clear();
+            next_round = batch_count_ + ROUND_DELTA;
+        }
+
+        batch_count_++;
     }
 }
 

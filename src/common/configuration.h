@@ -63,7 +63,7 @@ public:
         // Dump configuration of protocol.
         std::cout << "Low latency partition: ";
         for (auto protocol_info: partitions_protocol) {
-            assert(protocol_info.second != TxnProto::TRANSITION);
+            // assert(protocol_info.second != TxnProto::TRANSITION);
             if (protocol_info.second == TxnProto::LOW_LATENCY) {
                 std::cout << protocol_info.first << ":";
             }
