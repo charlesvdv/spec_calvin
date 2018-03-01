@@ -9,6 +9,7 @@
 
 #include <string>
 
+#include "applications/distribution.h"
 #include "../backend/storage_manager.h"
 #include "common/types.h"
 
@@ -26,7 +27,7 @@ class Application {
 
     // Load generation.
     virtual void NewTxn(int64 txn_id, int txn_type, Configuration *config,
-                        TxnProto *txn) const = 0;
+                        PartitionDistribution *distrib, TxnProto *txn) const = 0;
 
     // Static method to convert a key into an int for an array
     static int CheckpointID(Key key);

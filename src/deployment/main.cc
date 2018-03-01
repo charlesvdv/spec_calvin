@@ -11,6 +11,7 @@
 
 #include "applications/microbenchmark.h"
 #include "applications/tpcc.h"
+#include "applications/distribution.h"
 #include "backend/collapsed_versioned_storage.h"
 #include "backend/fetching_storage.h"
 #include "backend/simple_storage.h"
@@ -46,28 +47,20 @@ LatencyUtils latency_util;
 // Microbenchmark load generation client.
 class MClient : public Client {
   public:
-    MClient(Configuration *config, float mp)
+    MClient(Configuration *config, PartitionDistribution *distrib, float mp)
         : microbenchmark(config, config->num_partitions,
                          config->this_node_partition),
-          config_(config), percent_mp_(mp * 100) {}
+          config_(config), distrib_(distrib), percent_mp_(mp * 100) {}
     virtual ~MClient() {}
     virtual void GetTxn(TxnProto **txn, int txn_id) {
         if (config_->all_nodes.size() > 1 && rand() % 10000 < percent_mp_) {
             // Multi-partition txn.
             int parts[multi_txn_num_parts];
             parts[0] = config_->this_node_partition;
-            int counter = 1;
-            while (counter != multi_txn_num_parts) {
-                int new_part = config_->RandomPartition(), i = 0;
-                for (i = 0; i < counter; ++i) {
-                    if (parts[i] == new_part) {
-                        break;
-                    }
-                }
-                if (i == counter) {
-                    parts[i] = new_part;
-                    ++counter;
-                }
+            auto remote_parts = distrib_->GetPartitions(multi_txn_num_parts-1);
+            for (auto i = 1; i < multi_txn_num_parts; i++) {
+                assert(unsigned(i) < remote_parts.size()+1);
+                parts[i] = remote_parts[i-1];
             }
 
             *txn =
@@ -89,14 +82,15 @@ class MClient : public Client {
   private:
     Microbenchmark microbenchmark;
     Configuration *config_;
+    PartitionDistribution *distrib_;
     int percent_mp_;
 };
 
 // TPCC load generation client.
 class TClient : public Client {
   public:
-    TClient(Configuration *config, float mp)
-        : config_(config), percent_mp_(mp * 100) {}
+    TClient(Configuration *config, PartitionDistribution *distrib, float mp)
+        : config_(config), distrib_(distrib), percent_mp_(mp * 100) {}
     virtual ~TClient() {}
     virtual void GetTxn(TxnProto **txn, int txn_id) {
         TPCC tpcc;
@@ -108,39 +102,28 @@ class TClient : public Client {
             (*txn)->set_multipartition(false);
 
         // New order txn
-
-        //    int random_txn_type = rand() % 100;
-        //     // New order txn
-        //	if (random_txn_type < 45)  {
-        //	  tpcc.NewTxn(txn_id, TPCC::NEW_ORDER, config_, *txn);
-        //	} else if(random_txn_type < 88) {
-        //	 	 tpcc.NewTxn(txn_id, TPCC::PAYMENT, config_, *txn);
-        //	}  else {
-        //	  *txn = tpcc.NewTxn(txn_id, TPCC::STOCK_LEVEL, args_string,
-        //config_); 	  args.set_multipartition(false);
-        //	}
-
         int random_txn_type = rand() % 100;
         // New order txn
         if (random_txn_type < 45) {
-            tpcc.NewTxn(txn_id, TPCC::NEW_ORDER, config_, *txn);
+            tpcc.NewTxn(txn_id, TPCC::NEW_ORDER, config_, distrib_, *txn);
         } else if (random_txn_type < 88) {
-            tpcc.NewTxn(txn_id, TPCC::PAYMENT, config_, *txn);
+            tpcc.NewTxn(txn_id, TPCC::PAYMENT, config_, distrib_, *txn);
         } else if (random_txn_type < 92) {
             (*txn)->set_multipartition(false);
-            tpcc.NewTxn(txn_id, TPCC::ORDER_STATUS, config_, *txn);
+            tpcc.NewTxn(txn_id, TPCC::ORDER_STATUS, config_, distrib_, *txn);
         } else if (random_txn_type < 96) {
             (*txn)->set_multipartition(false);
-            tpcc.NewTxn(txn_id, TPCC::DELIVERY, config_, *txn);
+            tpcc.NewTxn(txn_id, TPCC::DELIVERY, config_, distrib_, *txn);
 
         } else {
             (*txn)->set_multipartition(false);
-            tpcc.NewTxn(txn_id, TPCC::STOCK_LEVEL, config_, *txn);
+            tpcc.NewTxn(txn_id, TPCC::STOCK_LEVEL, config_, distrib_, *txn);
         }
     }
 
   private:
     Configuration *config_;
+    PartitionDistribution *distrib_;
     int percent_mp_;
 };
 
@@ -179,6 +162,13 @@ int main(int argc, char **argv) {
     Configuration config(StringToInt(argv[1]), "deploy-run.conf");
     config.InitInfo();
 
+    PartitionDistribution *partition_distribution;
+    if (ConfigReader::Value("partition_distribution") == "zipfian") {
+        partition_distribution = new ZipfianDistribution(&config, false);
+    } else {
+        partition_distribution = new RandomDistribution(&config);
+    }
+
     // Build connection context and start multiplexer thread running.
     ConnectionMultiplexer multiplexer(&config);
 
@@ -187,9 +177,11 @@ int main(int argc, char **argv) {
         (argv[2][0] == 't')
             ? reinterpret_cast<Client *>(new TClient(
                   &config,
+                  partition_distribution,
                   stof(ConfigReader::Value("distribute_percent").c_str())))
             : reinterpret_cast<Client *>(new MClient(
                   &config,
+                  partition_distribution,
                   stof(ConfigReader::Value("distribute_percent").c_str())));
 
     Storage *storage;
@@ -274,6 +266,7 @@ int main(int argc, char **argv) {
     sequencer.output(scheduler);
     delete scheduler;
     delete scheduler_connection;
+    delete partition_distribution;
     // delete multicast;
     Spin(2);
     return 0;

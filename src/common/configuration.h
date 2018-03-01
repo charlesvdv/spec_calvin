@@ -82,12 +82,22 @@ public:
     int LookupPartition(const Key &key) const;
     int LookupPartition(const int &key) const;
 
+    // Broken...
     inline int RandomDCNode() {
         // int index = abs(rand()) % num_partitions;
-        int index = abs(rand()) % this_group.size();
         // auto node = this_group[index];
         // return node->node_id;
-        return this_group[index]->node_id;
+
+        // int index = abs(rand()) % this_group.size();
+        // return this_group[index]->node_id;
+
+        Node *node;
+        do {
+            int index = abs(rand()) % all_nodes.size();
+            node = all_nodes[index];
+        } while(all_nodes.size() > 1 &&
+            node->partition_id == this_node_partition);
+        return node->node_id;
     }
 
     inline int RandomPartition() { return abs(rand()) % num_partitions; }
@@ -138,9 +148,11 @@ public:
     map<int, Node *> all_nodes;
     map<int, vector<int>> nodes_by_partition;
 
+
     // Protocol used to communicate with this node.
     map<int, TxnProto::ProtocolType> partitions_protocol;
 
+    // Pair with <time to switch, partition to switch>
     priority_queue<pair<int, int>, vector<pair<int, int>>, CompareProtocolSwitch> this_node_protocol_switch;
 
   private:

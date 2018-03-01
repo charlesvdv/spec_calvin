@@ -33,7 +33,7 @@ class Microbenchmark : public Application {
 
     virtual void NewTxn(int64 txn_id, int txn_type,
                         Configuration *config = NULL,
-                        TxnProto *txn = NULL) const;
+                        PartitionDistribution *distrib = NULL, TxnProto *txn = NULL) const;
     virtual int Execute(TxnProto *txn, StorageManager *storage) const;
 
     TxnProto *InitializeTxn();

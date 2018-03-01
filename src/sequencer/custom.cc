@@ -848,6 +848,16 @@ void CustomSequencerSchedulerInterface::RunClient() {
     string filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
     std::ofstream cache_file(filename, std::ios_base::out);
 
+    // Variables used for automatic switching.
+    const int ROUND_DELTA = 10;
+    map<int, int> partitions_count;
+    int next_round = ROUND_DELTA;
+
+    std::function<bool(std::pair<int, int>, std::pair<int, int>)> compFunc =
+        [](std::pair<int, int> a, std::pair<int, int> b) {
+            return a.second < b.second;
+        };
+
     while(!destructor_invoked_) {
         vector<TxnProto*> batch;
         for (int i = 0; i < max_batch_size; i++) {
@@ -874,6 +884,9 @@ void CustomSequencerSchedulerInterface::RunClient() {
 
         // std::cout << "!!! batch count: " << batch_count_  << " " << ordered_txns.size() << "\n";
 
+        // Used to check which partitions has been required for this round.
+        set<int> partition_touched;
+
         MessageProto msg;
         msg.set_destination_channel("scheduler_");
         msg.set_type(MessageProto::TXN_BATCH);
@@ -883,14 +896,45 @@ void CustomSequencerSchedulerInterface::RunClient() {
             // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
             // Format involved partitions.
             auto nodes = Utils::GetInvolvedPartitions(*it);
+            for (auto part: nodes) {
+                partition_touched.insert(part);
+            }
             std::ostringstream ss;
             std::copy(nodes.begin(), nodes.end() - 1, std::ostream_iterator<int>(ss, ","));
             ss << nodes.back();
 
-            cache_file << (*it)->txn_id() << ":" << ss.str() << ":" << (*it)->batch_number() << ":" << (*it)->logical_clock() << "\n" << std::flush;
+            cache_file << (*it)->txn_id() << ":" << ss.str() << ":" << (*it)->batch_number()
+                << ":" << (*it)->logical_clock() << "\n" << std::flush;
             msg.add_data((*it)->SerializeAsString());
         }
         connection_->Send(msg);
+
+        for (auto part: partition_touched) {
+            partitions_count[part]++;
+        }
+
+        // Check if we need to switch some partitions.
+        if (next_round <= batch_count_) {
+            std::vector<std::pair<int, int>> data(partitions_count.begin(), partitions_count.end());
+            std::sort(data.begin(), data.end(), compFunc);
+
+            for (auto it = data.rbegin(); it < data.rend(); it++) {
+                auto part = (*it).first;
+                auto val = (*it).second;
+
+                if (((double)val/ROUND_DELTA) >= 0.7) {
+                    // We should switch...
+                    if (configuration_->partitions_protocol[part] == TxnProto::GENUINE) {
+
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            // Reset value
+            partitions_count.clear();
+        }
 
         batch_count_++;
     }

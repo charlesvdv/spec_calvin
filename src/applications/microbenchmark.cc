@@ -201,7 +201,7 @@ TxnProto *Microbenchmark::MicroTxnDependentMP(int64 txn_id, int *parts,
 // The load generator can be called externally to return a transaction proto
 // containing a new type of transaction.
 void Microbenchmark::NewTxn(int64 txn_id, int txn_type, Configuration *config,
-                            TxnProto *txn) const {}
+                            PartitionDistribution *distrib, TxnProto *txn) const {}
 
 int Microbenchmark::Execute(TxnProto *txn, StorageManager *storage) const {
     // Read all elements of 'txn->read_set()', add one to each, write them all
