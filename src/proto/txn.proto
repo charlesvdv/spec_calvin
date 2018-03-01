@@ -80,6 +80,8 @@ message TxnProto {
     // State where new communications are using GENUINE but LOW_LATENCY still
     // works for older partitions that requires it.
     TRANSITION = 3;
+    // Only used for protocol switching.
+    UNKNOW = 4;
   };
   map<int32, ProtocolType> protocols = 50;
 }

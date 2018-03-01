@@ -56,13 +56,6 @@ extern pthread_mutex_t mutex_for_item;
 
 #define ORDER_LINE_NUMBER 10
 
-class CompareProtocolSwitch {
-public:
-    bool operator()(pair<int, int> a, pair<int, int> b) {
-        return a.second > b.second;
-    }
-};
-
 class Configuration {
 public:
     Configuration(int node_id, const string &filename);
@@ -153,7 +146,7 @@ public:
     map<int, TxnProto::ProtocolType> partitions_protocol;
 
     // Pair with <time to switch, partition to switch>
-    priority_queue<pair<int, int>, vector<pair<int, int>>, CompareProtocolSwitch> this_node_protocol_switch;
+    priority_queue<SwitchInfo> this_node_protocol_switch;
 
   private:
     // TODO(alex): Comments.

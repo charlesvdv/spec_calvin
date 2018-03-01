@@ -112,7 +112,7 @@ bool Configuration::WriteToFile(const string &filename) const {
                 protocol += ",";
             }
             auto switch_info = node->protocol_switch[i];
-            protocol_switch += std::to_string(switch_info.first) + "@" + std::to_string(switch_info.second);
+            protocol_switch += std::to_string(switch_info.partition_id) + "@" + std::to_string((int)switch_info.time);
         }
         fprintf(fp, "node%d=%d:%d:%d:%s:%d:%s:%s\n", it->first, node->replica_id,
                 node->partition_id, node->cores, node->host.c_str(),
@@ -200,7 +200,7 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
                 char *subsubtok;
                 int partition_id = atoi(strtok_r(subtok, "@", &subsubtok));
                 int switch_time = atoi(strtok_r(NULL, "@", &subsubtok));
-                node->protocol_switch.push_back(std::make_pair(partition_id, switch_time));
+                node->protocol_switch.push_back(SwitchInfo(switch_time, partition_id, TxnProto::UNKNOW));
             }
         }
 

@@ -61,6 +61,8 @@ public:
     ProtocolSwitchInfo() {  }
 
     ProtocolSwitchState state;
+    // Only used when aborting.
+    TxnProto::ProtocolType protocol;
 
     // Information about the other partition.
     int partition_id = -1;

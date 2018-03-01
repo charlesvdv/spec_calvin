@@ -409,29 +409,33 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
     // And initialize it.
     if (configuration_->this_node_protocol_switch.size()) {
         auto next_switch = configuration_->this_node_protocol_switch.top();
-        if ((GetTime() - start_time_) >= next_switch.second) {
+        if ((GetTime() - start_time_) >= next_switch.time) {
             // TODO: intra-partition replication of switch_info
-            std::cout << "okokok " << next_switch.first << "\n" << std::flush;
+            // std::cout << "okokok " << next_switch.time << "\n" << std::flush;
 
-            int partition_id = next_switch.first;
-            SwitchInfoProto switch_info;
-            switch_info.set_partition_type(GetPartitionType());
-            switch_info.set_current_round(batch_count_);
-            switch_info.set_switching_round(batch_count_ + SWITCH_ROUND_DELTA);
-            switch_info.set_type(SwitchInfoProto::INIT_MSG);
+            // int partition_id = next_switch.first;
 
             // Postpone switching if we are currently in one.
             // otherwise, remove switching info.
             if (protocol_switch_info_ != NULL) {
-                next_switch.second += 1;
+                next_switch.time += 1;
+            } else if (next_switch.protocol == configuration_->partitions_protocol[next_switch.partition_id]) {
+                // We are already in the good protocol...
+                configuration_->this_node_protocol_switch.pop();
             } else {
-                std::cout << "dispatched!! " << next_switch.first << "\n"  << std::flush;
-                SendSwitchMsg(&switch_info, partition_id);
+                SwitchInfoProto switch_info;
+                switch_info.set_partition_type(GetPartitionType());
+                switch_info.set_current_round(batch_count_);
+                switch_info.set_switching_round(batch_count_ + SWITCH_ROUND_DELTA);
+                switch_info.set_type(SwitchInfoProto::INIT_MSG);
+                SendSwitchMsg(&switch_info, next_switch.partition_id);
+                std::cout << "dispatched!! " << next_switch.partition_id << "\n"  << std::flush;
 
                 protocol_switch_info_ = new ProtocolSwitchInfo();
-                protocol_switch_info_->partition_id = partition_id;
+                protocol_switch_info_->partition_id = next_switch.partition_id;
                 protocol_switch_info_->state = ProtocolSwitchState::WAITING_INIT;
                 protocol_switch_info_->init_round_num = batch_count_;
+                protocol_switch_info_->protocol = next_switch.protocol;
 
                 configuration_->this_node_protocol_switch.pop();
             }
@@ -552,7 +556,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             if (protocol_switch_info_->partition_id != -1) {
                 // Reinsert transitions to retry it.
                 configuration_->this_node_protocol_switch.push(
-                    std::make_pair(protocol_switch_info_->partition_id, (GetTime() + 1) - start_time_)
+                    SwitchInfo((GetTime() + 1) - start_time_, protocol_switch_info_->partition_id, protocol_switch_info_->protocol)
                 );
             } else if (protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING ||
                     protocol_switch_info_->state == ProtocolSwitchState::WAIT_NETWORK_MAPPING_RESPONSE) {
@@ -849,9 +853,9 @@ void CustomSequencerSchedulerInterface::RunClient() {
     std::ofstream cache_file(filename, std::ios_base::out);
 
     // Variables used for automatic switching.
-    const int ROUND_DELTA = 10;
+    // const int ROUND_DELTA = 10;
     map<int, int> partitions_count;
-    int next_round = ROUND_DELTA;
+    // int next_round = ROUND_DELTA;
 
     std::function<bool(std::pair<int, int>, std::pair<int, int>)> compFunc =
         [](std::pair<int, int> a, std::pair<int, int> b) {
@@ -914,29 +918,29 @@ void CustomSequencerSchedulerInterface::RunClient() {
         }
 
         // Check if we need to switch some partitions.
-        if (next_round <= batch_count_) {
-            std::vector<std::pair<int, int>> data(partitions_count.begin(), partitions_count.end());
-            std::sort(data.begin(), data.end(), compFunc);
+        // if (next_round <= batch_count_) {
+            // std::vector<std::pair<int, int>> data(partitions_count.begin(), partitions_count.end());
+            // std::sort(data.begin(), data.end(), compFunc);
 
-            for (auto it = data.rbegin(); it < data.rend(); it++) {
-                auto part = (*it).first;
-                auto val = (*it).second;
+            // for (auto it = data.rbegin(); it < data.rend(); it++) {
+                // auto part = (*it).first;
+                // auto val = (*it).second;
 
-                if (((double)val/ROUND_DELTA) >= 0.7) {
-                    // We should switch...
-                    if (configuration_->partitions_protocol[part] == TxnProto::GENUINE) {
+                // if (((double)val/ROUND_DELTA) >= 0.7) {
+                    // // We should switch...
+                    // if (configuration_->partitions_protocol[part] == TxnProto::GENUINE) {
 
-                    }
-                } else {
-                    break;
-                }
-            }
+                    // }
+                // } else {
+                    // break;
+                // }
+            // }
 
-            // Reset value
-            partitions_count.clear();
-        }
+            // // Reset value
+            // partitions_count.clear();
+        // }
 
-        batch_count_++;
+        // batch_count_++;
     }
 }
 

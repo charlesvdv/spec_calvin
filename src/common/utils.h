@@ -21,6 +21,7 @@
 #include <vector>
 #include <unordered_map>
 #include <functional>
+#include "proto/txn.pb.h"
 
 #include "common/logging.h"
 #include "common/types.h"
@@ -810,6 +811,20 @@ class MyTuple {
     MyTuple() {}
 };
 
+class SwitchInfo {
+public:
+    SwitchInfo(double time, int partition_id, TxnProto::ProtocolType protocol):
+        time(time), partition_id(partition_id), protocol(protocol) {}
+
+    bool operator<(const SwitchInfo info) const {
+        return this->time > info.time;
+    }
+
+    double time;
+    int partition_id;
+    TxnProto::ProtocolType protocol;
+};
+
 struct Node {
     // Globally unique node identifier.
     int node_id;
@@ -832,7 +847,7 @@ struct Node {
 
     // Protocol switching requirements.
     // pair<partition, time elapsed before switch>
-    vector<pair<int, int>> protocol_switch;
+    vector<SwitchInfo> protocol_switch;
 };
 
 class WriteLock {
