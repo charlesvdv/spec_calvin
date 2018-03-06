@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include "common/configuration.h"
 #include "common/utils.h"
+#include "proto/txn.pb.h"
 
 using std::vector;
 
@@ -56,7 +57,7 @@ public:
             // As we are working with a biaised distribution, we may have a very small
             // chance to have some partitions. If num is high, we may loop for quite some time.
             // Stop before loosing too much time.
-            if (iter_num++ > 20) {
+            if (iter_num++ > 50) {
                 break;
             }
         }
@@ -92,6 +93,30 @@ private:
     vector<double> zipfian_cumul_;
     bool switching_enabled_;
     double switching_time_;
+};
+
+class DeterministicDistribution: public PartitionDistribution {
+public:
+    DeterministicDistribution(Configuration *conf):
+        conf_(conf) {}
+
+    vector<int> GetPartitions(unsigned num) {
+        vector<int> low_latency_partitions;
+        for (auto info: conf_->partitions_protocol) {
+            if (info.second == TxnProto::LOW_LATENCY) {
+                low_latency_partitions.push_back(info.first);
+            }
+        }
+        srand(time(NULL));
+        std::random_shuffle(low_latency_partitions.begin(), low_latency_partitions.end());
+
+        if (low_latency_partitions.size() < num) {
+            num = low_latency_partitions.size();
+        }
+        return std::vector<int>(low_latency_partitions.begin(), low_latency_partitions.begin() + num);
+    }
+private:
+    Configuration *conf_;
 };
 
 class RandomDistribution: public PartitionDistribution {

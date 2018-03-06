@@ -89,7 +89,8 @@ private:
 
 class CustomSequencerSchedulerInterface {
 public:
-    CustomSequencerSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client);
+    CustomSequencerSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer,
+        Client *client, bool enable_adaptive_switching = true);
     ~CustomSequencerSchedulerInterface();
 
     void output(DeterministicScheduler *scheduler);
@@ -112,6 +113,8 @@ private:
     int max_batch_size = atoi(ConfigReader::Value("max_batch_size").c_str());
 
     Configuration *configuration_;
+
+    bool enable_adaptive_switching_;
 };
 
 #endif

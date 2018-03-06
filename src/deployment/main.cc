@@ -165,6 +165,8 @@ int main(int argc, char **argv) {
     PartitionDistribution *partition_distribution;
     if (ConfigReader::Value("partition_distribution") == "zipfian") {
         partition_distribution = new ZipfianDistribution(&config, false, 2);
+    } else if (ConfigReader::Value("partition_distribution") == "deterministic") {
+        partition_distribution = new DeterministicDistribution(&config);
     } else {
         partition_distribution = new RandomDistribution(&config);
     }
@@ -235,7 +237,8 @@ int main(int argc, char **argv) {
     // Initialize sequencer component and start sequencer thread running.
     // Sequencer sequencer(&config, &multiplexer, client, storage, queue_mode);
     // TOMulticastSchedulerInterface *multicast = new TOMulticastSchedulerInterface(&config, &multiplexer, client);
-    CustomSequencerSchedulerInterface sequencer(&config, &multiplexer, client);
+    bool enable_adaptive_switching = atoi(ConfigReader::Value("enable_adaptive_switching").c_str());
+    CustomSequencerSchedulerInterface sequencer(&config, &multiplexer, client, enable_adaptive_switching);
     Connection *scheduler_connection = multiplexer.NewConnection("scheduler_");
 
     AtomicQueue<TxnProto*> txns_queue;
