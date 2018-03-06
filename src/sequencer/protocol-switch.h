@@ -70,7 +70,12 @@ public:
 
     int switching_round = 0;
 
+    // Round at which the switching was started. To avoid inconsistency between in-sync or
+    // out-of-sync.
     int init_round_num = 0;
+
+    // Check if we initiated the switch.
+    bool initiator = false;
 
     // Informs if MEC is synchronized with the execution (see ProtocolSwitchState::MEC_SYNCHRO).
     bool local_mec_synchro = false;
