@@ -30,6 +30,8 @@ def ordered(data, offsets):
     while(True):
         hasTxnExecuted = False
         for p, offset in enumerate(offsets):
+            if len(data) <= offset:
+                return True
             txn = data[offset][p]
             if txn is None:
                 continue
