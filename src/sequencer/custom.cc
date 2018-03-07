@@ -598,18 +598,17 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                     // delete protocol_switch_info_;
                     // protocol_switch_info_ = NULL;
                 // }
-            } else {
-                // Abort when we should abort a network mapping and we are not in one.
-                if (!switch_info.has_mapping_id()) {
-                    delete protocol_switch_info_;
-                    protocol_switch_info_ = NULL;
-                }
+            }
+            // Abort when we should abort a network mapping and we are not in one.
+            if (!switch_info.has_mapping_id()) {
+                delete protocol_switch_info_;
+                protocol_switch_info_ = NULL;
             }
 
         } else if (switch_info.type() == SwitchInfoProto::ABORT_MAPPING) {
-            // if (!switch_info.has_mapping_id() || switch_info.mapping_id() != protocol_switch_info_->mapping_id) {
-                // continue;
-            // }
+            if (!switch_info.has_mapping_id() || switch_info.mapping_id() != protocol_switch_info_->mapping_id) {
+                continue;
+            }
             std::cout << configuration_->this_node_partition << " aborded mapping!\n" << std::flush;
             auto this_partition_hop_count = protocol_switch_info_->partition_mapping[configuration_->this_node_partition];
 
@@ -666,7 +665,8 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 }
             }
         } else if (switch_info.type() == SwitchInfoProto::LOW_LATENCY_MAPPING_RESPONSE) {
-            if (protocol_switch_info_->state != ProtocolSwitchState::NETWORK_MAPPING) {
+            if (protocol_switch_info_->state != ProtocolSwitchState::NETWORK_MAPPING ||
+                    protocol_switch_info_->mapping_id != switch_info.mapping_id()) {
                 continue;
             }
             protocol_switch_info_->partition_mapping_response_count += 1;
@@ -824,6 +824,9 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
         switch_info.set_type(SwitchInfoProto::LOW_LATENCY_ROUND_VOTE);
         switch_info.set_final_round(protocol_switch_info_->final_round);
         SendSwitchMsg(&switch_info, protocol_switch_info_->partition_id);
+
+        // Avoid resending things...
+        protocol_switch_info_->state = ProtocolSwitchState::WAIT_ROUND_TO_SWITCH;
     }
 
     if (launch_switching_round_propagation) {
