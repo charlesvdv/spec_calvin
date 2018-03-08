@@ -55,7 +55,7 @@ private:
     SwitchInfoProto::PartitionType GetPartitionType();
     void SendSwitchMsg(SwitchInfoProto *payload, int partition_id = -1);
 
-    void LaunchPartitionMapping();
+    void LaunchPartitionMapping(vector<int> required_partition_mapping);
 
 
     ProtocolSwitchInfo *protocol_switch_info_;
@@ -89,6 +89,8 @@ private:
     bool started = false;
 
     int start_time_;
+
+    int switching_done = 0;
 };
 
 class CustomSequencerSchedulerInterface {

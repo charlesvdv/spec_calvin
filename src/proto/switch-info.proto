@@ -18,13 +18,12 @@ message SwitchInfoProto {
     LOW_LATENCY_MAPPING_RESPONSE = 6;
     LOW_LATENCY_MAPPING_FINISHED = 7;
     LOW_LATENCY_ROUND_VOTE = 8;
-    ABORT_MAPPING = 9;
   };
   optional MessageType type = 4;
 
   // Key: partition id
   // Value: hop count from switching partitions.
-  map<int32, int32> partition_mapping = 5;
+  /* map<int32, int32> partition_mapping = 5; */
 
   // The id of the mapping.
   optional int64 mapping_id = 6;
@@ -32,8 +31,12 @@ message SwitchInfoProto {
   optional int32 final_round = 7;
 
   // Leader of the switch. Used for hybrid GENUINE -> LOW LATENCY switch.
-  optional int32 mapping_leader = 8;
+  /* optional int32 mapping_leader = 8; */
 
   // This partition hop according to the parent hop.
-  optional int32 this_partition_hop_count = 9;
+  /* optional int32 hop_count = 9; */
+
+  repeated int32 neighbours_partition = 10;
+
+  optional bool mapping_already_handled = 11;
 }

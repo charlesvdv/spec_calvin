@@ -2,6 +2,7 @@
 #define SEQUENCER_PROTOCOL_SWITCH_H
 
 #include "proto/switch-info.pb.h"
+#include <limits>
 
 // The actual protocol switch is located at `src/sequencer/custom.cc`.
 // Contains information used for a local node to keep information on
@@ -83,7 +84,9 @@ public:
 
     // Key: partition id
     // Value: hop count from switching partitions.
-    map<int, int> partition_mapping;
+    // map<int, int> partition_mapping;
+    // vector<int> visited_partitions;
+
     long mapping_id = -1;
     int partition_mapping_response_count = 0;
 
@@ -93,10 +96,13 @@ public:
 
     int final_round = 0;
 
+    // Partition that requires a request.
+    set<int> partitions_request_send;
     // Tracks which partitions responded to us.
-    set<int> required_partitions_response;
+    set<int> partitions_response_received;
 
-    int this_partition_hop_count = -1;
+    bool is_mapping_leader = false;
+    // int this_partition_hop_count = -1;
     int mapping_leader = -1;
 };
 
