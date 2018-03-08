@@ -84,7 +84,7 @@ public:
     // Key: partition id
     // Value: hop count from switching partitions.
     map<int, int> partition_mapping;
-    long mapping_id;
+    long mapping_id = -1;
     int partition_mapping_response_count = 0;
 
     // Informs if we finished or not the low latency partition mapping.
@@ -92,6 +92,12 @@ public:
     bool remote_mapping_finished = false;
 
     int final_round = 0;
+
+    // Tracks which partitions responded to us.
+    set<int> required_partitions_response;
+
+    int this_partition_hop_count = -1;
+    int mapping_leader = -1;
 };
 
 #endif

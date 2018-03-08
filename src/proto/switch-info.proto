@@ -30,4 +30,10 @@ message SwitchInfoProto {
   optional int64 mapping_id = 6;
 
   optional int32 final_round = 7;
+
+  // Leader of the switch. Used for hybrid GENUINE -> LOW LATENCY switch.
+  optional int32 mapping_leader = 8;
+
+  // This partition hop according to the parent hop.
+  optional int32 this_partition_hop_count = 9;
 }

@@ -54,6 +54,10 @@ private:
     void HandleProtocolSwitch(bool got_txns_executed);
     SwitchInfoProto::PartitionType GetPartitionType();
     void SendSwitchMsg(SwitchInfoProto *payload, int partition_id = -1);
+
+    void LaunchPartitionMapping();
+
+
     ProtocolSwitchInfo *protocol_switch_info_;
 
     TOMulticast *genuine_;
