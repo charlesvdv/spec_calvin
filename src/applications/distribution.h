@@ -101,19 +101,21 @@ public:
         conf_(conf) {}
 
     vector<int> GetPartitions(unsigned num) {
-        vector<int> low_latency_partitions;
+        set<int> low_latency_partitions;
         for (auto info: conf_->partitions_protocol) {
             if (info.second == TxnProto::LOW_LATENCY) {
-                low_latency_partitions.push_back(info.first);
+                low_latency_partitions.insert(info.first);
             }
         }
-        srand(time(NULL));
-        std::random_shuffle(low_latency_partitions.begin(), low_latency_partitions.end());
 
-        if (low_latency_partitions.size() < num) {
-            num = low_latency_partitions.size();
+        srand(time(NULL));
+        while(low_latency_partitions.size() < num && low_latency_partitions.size() < conf_->partitions_protocol.size()) {
+            low_latency_partitions.insert(rand() % conf_->num_partitions);
         }
-        return std::vector<int>(low_latency_partitions.begin(), low_latency_partitions.begin() + num);
+
+        vector<int> result(low_latency_partitions.begin(), low_latency_partitions.end());
+        std::random_shuffle(result.begin(), result.end());
+        return result;
     }
 private:
     Configuration *conf_;
