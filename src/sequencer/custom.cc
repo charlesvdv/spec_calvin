@@ -155,6 +155,10 @@ void CustomSequencer::RunThread() {
             MessageProto *rcv_msg = new MessageProto();
             // std::cout << "waiting...\n" << std::flush;
             if (connection_->GetMessage(rcv_msg)) {
+                // We can maybe have some synchronization left.
+                if (rcv_msg->type() == MessageProto::EMPTY) {
+                    continue;
+                }
                 assert(rcv_msg->type() == MessageProto::TXN_BATCH);
                 batch_messages_[rcv_msg->batch_number()].push_back(rcv_msg);
             } else {
