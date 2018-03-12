@@ -241,12 +241,13 @@ int main(int argc, char **argv) {
     CustomSequencerSchedulerInterface sequencer(&config, &multiplexer, client, enable_adaptive_switching);
     Connection *scheduler_connection = multiplexer.NewConnection("scheduler_");
 
+    bool independent_mpo = atoi(ConfigReader::Value("independent_mpo").c_str());
     AtomicQueue<TxnProto*> txns_queue;
     DeterministicScheduler *scheduler;
     if (argv[2][0] == 't') {
         scheduler = new DeterministicScheduler(
             &config, scheduler_connection, storage, new TPCC(),
-            &txns_queue, client, queue_mode);
+            &txns_queue, client, queue_mode, independent_mpo);
         // scheduler = new DeterministicScheduler(
             // &config, scheduler_connection, storage, new TPCC(),
             // sequencer.GetTxnsQueue(), client, queue_mode);
@@ -255,7 +256,7 @@ int main(int argc, char **argv) {
             &config, scheduler_connection, storage,
             new Microbenchmark(&config, config.num_partitions,
                                config.this_node_partition),
-            &txns_queue, client, queue_mode);
+            &txns_queue, client, queue_mode, independent_mpo);
         // scheduler = new DeterministicScheduler(
             // &config, scheduler_connection, storage,
             // new Microbenchmark(&config, config.num_partitions,

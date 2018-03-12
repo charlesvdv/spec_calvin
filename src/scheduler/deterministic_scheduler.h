@@ -48,7 +48,7 @@ class DeterministicScheduler : public Scheduler {
     DeterministicScheduler(Configuration *conf, Connection *batch_connection,
                            Storage *storage, const Application *application,
                            AtomicQueue<TxnProto *> *input_queue, Client *client,
-                           int queue_mode);
+                           int queue_mode, bool independent_mpo = false);
     virtual ~DeterministicScheduler();
     void StopRunning() {
         deconstructor_invoked_ = true;
@@ -108,6 +108,7 @@ class DeterministicScheduler : public Scheduler {
     int num_threads;
     int64 committed;
     int pending_txns;
+    bool independent_mpo_;
 
   public:
     bool deconstructor_invoked_ = false;

@@ -66,10 +66,10 @@ TxnProto *DeterministicScheduler::GetTxnPtr(socket_t *socket,
 DeterministicScheduler::DeterministicScheduler(
     Configuration *conf, Connection *batch_connection, Storage *storage,
     const Application *application, AtomicQueue<TxnProto *> *input_queue,
-    Client *client, int queue_mode)
+    Client *client, int queue_mode, bool independent_mpo)
     : configuration_(conf), batch_connection_(batch_connection),
       storage_(storage), application_(application), to_lock_txns(input_queue),
-      client_(client), queue_mode_(queue_mode), committed(0) {
+      client_(client), queue_mode_(queue_mode), committed(0), independent_mpo_(independent_mpo) {
 
     num_threads = atoi(ConfigReader::Value("num_threads").c_str());
     message_queue = new AtomicQueue<MessageProto>();
@@ -169,7 +169,7 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
                 manager = new StorageManager(scheduler->configuration_,
                                              scheduler->thread_connection_,
                                              scheduler->storage_, txn);
-                if (scheduler->application_->Execute(txn, manager) == SUCCESS) {
+                if (scheduler->application_->Execute(txn, manager) == SUCCESS || scheduler->independent_mpo_) {
                     LOG(txn->txn_id(),
                         " finished execution! " << txn->txn_type());
                     if (txn->writers_size() == 0 ||
@@ -221,7 +221,10 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
             nothing_happened = false;
             LOG(-1, " got READ_RESULT for " << message.txn_id());
             assert(message.type() == MessageProto::READ_RESULT);
-            buffered_messages[message.txn_id()].push_back(message);
+            // If we have independent MPOs, we don't care about the result received...
+            if (!scheduler->independent_mpo_) {
+                buffered_messages[message.txn_id()].push_back(message);
+            }
         }
 
         // Current batch has remaining txns, grab up to 10.
