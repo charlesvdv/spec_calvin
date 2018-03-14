@@ -83,9 +83,6 @@ class DeterministicScheduler : public Scheduler {
 
     AtomicQueue<TxnProto *> *to_lock_txns;
 
-    // Client
-    Client *client_;
-
     // The per-node lock manager tracks what transactions have temporary
     // ownership of what database objects, allowing the scheduler to track LOCAL
     // conflicts and enforce equivalence to transaction orders.
@@ -103,6 +100,9 @@ class DeterministicScheduler : public Scheduler {
     //  socket_t* responses_in_;
 
     AtomicQueue<MessageProto> *message_queue;
+
+    // Client
+    Client *client_;
 
     int queue_mode_;
     int num_threads;

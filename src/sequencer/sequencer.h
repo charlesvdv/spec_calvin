@@ -54,10 +54,16 @@ extern double worker_end[SAMPLES];
 extern double scheduler_unlock[SAMPLES];
 #endif
 
-class Client {
+class TxnGetterClient {
+  public:
+    virtual ~TxnGetterClient() {}
+    virtual void GetTxn(TxnProto **txn, int txn_id) = 0;
+};
+
+class Client: public TxnGetterClient {
   public:
     virtual ~Client() {}
-    virtual void GetTxn(TxnProto **txn, int txn_id) = 0;
+    virtual void GotTxnExecuted(int txn_id) = 0;
 };
 
 class Sequencer {

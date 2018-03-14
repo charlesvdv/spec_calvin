@@ -330,9 +330,9 @@ bool TOMulticast::HasTxnForPartition(int partition_id) {
     std::function<bool(pair<TxnProto*, TOMulticastState>)> getter =
         [testLowLatency](pair<TxnProto*, TOMulticastState> a) {
             auto test = testLowLatency(a.first);
-            if (test) {
-                std::cout << "test: " << a.first->txn_id() << "\n" << std::flush;
-            }
+            // if (test) {
+                // std::cout << "test: " << a.first->txn_id() << "\n" << std::flush;
+            // }
             return test;
         };
     std::function<bool(bool, bool)> reducer =
@@ -392,7 +392,7 @@ void TOMulticastSchedulerInterface::RunClient() {
         }
 
         std::vector<TxnProto*> decided;
-        while (decided.empty()) {
+        while (decided.empty() && !destructor_invoked_) {
             decided = multicast_->GetDecided();
             Spin(0.001);
         }

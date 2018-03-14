@@ -178,6 +178,7 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
                                                  1000);
                         ++scheduler->committed;
                     }
+                    scheduler->client_->GotTxnExecuted(txn->txn_id());
                     delete manager;
                     txn = NULL;
                 }
@@ -213,6 +214,7 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
                     latency_util.add_latency((GetUTime() - txn->seed()) / 1000);
                     ++scheduler->committed;
                 }
+                scheduler->client_->GotTxnExecuted(txn->txn_id());
                 delete manager;
                 txn = NULL;
             }

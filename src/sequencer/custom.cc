@@ -151,7 +151,7 @@ void CustomSequencer::RunThread() {
         // std::cout << "partition num: " << partition_num << "\n"
                   // << "msg sent: " << txn_by_partitions.size() << "\n"
                   // << "round number: " << batch_count_ << "\n" << std::flush;
-        while (batch_messages_[batch_count_].size() < unsigned(partition_num)) {
+        while (batch_messages_[batch_count_].size() < unsigned(partition_num) && !destructor_invoked_) {
             MessageProto *rcv_msg = new MessageProto();
             // std::cout << "waiting...\n" << std::flush;
             if (connection_->GetMessage(rcv_msg)) {
@@ -518,7 +518,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                     protocol_switch_info_->state = ProtocolSwitchState::MEC_SYNCHRO;
 
                     // Wait for the first low latency message to synchronize round number.
-                    while (true) {
+                    while (!destructor_invoked_) {
                         MessageProto *rcv_msg = new MessageProto();
                         if (connection_->GetMessage(rcv_msg)) {
                             assert(rcv_msg->type() == MessageProto::TXN_BATCH);
@@ -619,10 +619,15 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 continue;
             }
 
-            assert(protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING);
-
             response_msg.set_type(SwitchInfoProto::LOW_LATENCY_MAPPING_RESPONSE);
             response_msg.set_mapping_id(protocol_switch_info_->mapping_id);
+            if (protocol_switch_info_->state == ProtocolSwitchState::WAIT_NETWORK_MAPPING_RESPONSE &&
+                    protocol_switch_info_->is_mapping_leader) {
+                SendSwitchMsg(&response_msg, partition_id);
+                continue;
+            }
+            assert(protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING);
+
             for (auto protocol: configuration_->partitions_protocol) {
                 assert(protocol.second != TxnProto::TRANSITION);
                 int partition_id = protocol.first;
@@ -800,9 +805,11 @@ void CustomSequencerSchedulerInterface::RunClient() {
     std::ofstream cache_file(filename, std::ios_base::out);
 
     // Variables used for automatic switching.
-    const int ROUND_DELTA = 50;
+    const int TIME_DELTA = 5;
     map<int, int> partitions_count;
-    int next_round = ROUND_DELTA;
+    int num_round = 0;
+    // int next_round = ROUND_DELTA;
+    int start_time_ = GetTime() + TIME_DELTA;
 
     std::function<bool(std::pair<int, int>, std::pair<int, int>)> compFunc =
         [](std::pair<int, int> a, std::pair<int, int> b) {
@@ -817,21 +824,35 @@ void CustomSequencerSchedulerInterface::RunClient() {
             int txn_id_offset = i;
             TxnProto *txn;
             client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
+            if (txn == NULL) {
+                break;
+            }
             txn->set_multipartition(Utils::IsReallyMultipartition(txn, configuration_->this_node_partition));
             batch.push_back(txn);
         }
         sequencer_->OrderTxns(batch);
 
         vector<TxnProto*> ordered_txns;
-        while(ordered_txns.size() == 0) {
-            TxnProto *txn;
-            while(sequencer_->GetOrderedTxn(&txn)) {
-                ordered_txns.push_back(txn);
-            }
-            if (ordered_txns.size() == 0) {
-                Spin(0.001);
-            }
+        TxnProto *txn;
+        while(sequencer_->GetOrderedTxn(&txn)) {
+            ordered_txns.push_back(txn);
         }
+
+        if (ordered_txns.empty()) {
+            Spin(0.01);
+        } else {
+            num_round++;
+        }
+
+        // while(ordered_txns.size() == 0) {
+            // TxnProto *txn;
+            // while(sequencer_->GetOrderedTxn(&txn)) {
+                // ordered_txns.push_back(txn);
+            // }
+            // if (ordered_txns.size() == 0) {
+                // Spin(0.001);
+            // }
+        // }
 
         // std::cout << "!!! batch count: " << batch_count_  << " " << ordered_txns.size() << "\n";
 
@@ -875,7 +896,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
         }
 
         // Check if we need to switch some partitions.
-        if (enable_adaptive_switching_ && next_round <= batch_count_) {
+        if (enable_adaptive_switching_ && (GetTime() - start_time_) > TIME_DELTA) {
             std::vector<std::pair<int, int>> data(partitions_count.begin(), partitions_count.end());
             std::sort(data.begin(), data.end(), compFunc);
 
@@ -884,7 +905,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
                 auto part = (*it).first;
                 auto val = (*it).second;
 
-                if (((double)val/ROUND_DELTA) >= 0.9) {
+                if (((double)val/num_round) >= 0.75) {
                     // We should switch...
                     if (configuration_->partitions_protocol[part] == TxnProto::GENUINE) {
                         configuration_->this_node_protocol_switch.push(
@@ -902,7 +923,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
                 auto part = (*it).first;
                 auto val = (*it).second;
 
-                if (((double)val/ROUND_DELTA) <= 0.5) {
+                if (((double)val/num_round) <= 0.25) {
                     // We should switch...
                     if (configuration_->partitions_protocol[part] == TxnProto::LOW_LATENCY) {
                         configuration_->this_node_protocol_switch.push(
@@ -917,7 +938,8 @@ void CustomSequencerSchedulerInterface::RunClient() {
 
             // Reset value
             partitions_count.clear();
-            next_round = batch_count_ + ROUND_DELTA;
+            start_time_ = GetTime();
+            num_round = 0;
         }
 
         batch_count_++;

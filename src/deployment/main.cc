@@ -45,7 +45,7 @@ int multi_txn_num_parts;
 LatencyUtils latency_util;
 
 // Microbenchmark load generation client.
-class MClient : public Client {
+class MClient : public TxnGetterClient {
   public:
     MClient(Configuration *config, PartitionDistribution *distrib, float mp)
         : microbenchmark(config, config->num_partitions,
@@ -87,7 +87,7 @@ class MClient : public Client {
 };
 
 // TPCC load generation client.
-class TClient : public Client {
+class TClient : public TxnGetterClient {
   public:
     TClient(Configuration *config, PartitionDistribution *distrib, float mp)
         : config_(config), distrib_(distrib), percent_mp_(mp * 100) {}
@@ -125,6 +125,47 @@ class TClient : public Client {
     Configuration *config_;
     PartitionDistribution *distrib_;
     int percent_mp_;
+};
+
+class OpenLoopClient: public Client {
+  public:
+    OpenLoopClient(TxnGetterClient *client):
+        client_(client) {}
+
+    virtual ~OpenLoopClient() {}
+
+    virtual void GetTxn(TxnProto **txn, int txn_id) {
+        client_->GetTxn(txn, txn_id);
+    }
+
+    virtual void GotTxnExecuted(int txn_id) {}
+  private:
+    TxnGetterClient *client_;
+};
+
+class ClosedLoopClient: public Client {
+  public:
+    ClosedLoopClient(TxnGetterClient *client, int max_txns):
+        client_(client), max_txns_(max_txns) {}
+
+    virtual ~ClosedLoopClient() {}
+
+    virtual void GetTxn(TxnProto **txn, int txn_id) {
+        if (current_txns_.size() >= max_txns_) {
+            *txn = NULL;
+            return;
+        }
+        client_->GetTxn(txn, txn_id);
+        current_txns_.insert(txn_id);
+    }
+
+    virtual void GotTxnExecuted(int txn_id) {
+        current_txns_.erase(txn_id);
+    }
+  private:
+    TxnGetterClient *client_;
+    unsigned max_txns_;
+    set<int> current_txns_;
 };
 
 void stop(int sig) {
@@ -175,7 +216,7 @@ int main(int argc, char **argv) {
     ConnectionMultiplexer multiplexer(&config);
 
     // Artificial loadgen clients.
-    Client *client =
+    TxnGetterClient *getterClient =
         (argv[2][0] == 't')
             ? reinterpret_cast<Client *>(new TClient(
                   &config,
@@ -185,6 +226,13 @@ int main(int argc, char **argv) {
                   &config,
                   partition_distribution,
                   stof(ConfigReader::Value("distribute_percent").c_str())));
+
+    Client *client;
+    if (ConfigReader::Value("client_loop_type") == "closed") {
+        client = new ClosedLoopClient(getterClient, atoi(ConfigReader::Value("num_closed_loop_client").c_str()));
+    } else {
+        client = new OpenLoopClient(getterClient);
+    }
 
     Storage *storage;
     if (!useFetching) {
@@ -268,10 +316,12 @@ int main(int argc, char **argv) {
     Spin(atoi(ConfigReader::Value("duration").c_str()));
     scheduler->StopRunning();
     sequencer.output(scheduler);
+
     delete scheduler;
     delete scheduler_connection;
     delete partition_distribution;
+
     // delete multicast;
-    Spin(2);
+    Spin(1);
     return 0;
 }
