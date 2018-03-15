@@ -285,8 +285,17 @@ int main(int argc, char **argv) {
     // Initialize sequencer component and start sequencer thread running.
     // Sequencer sequencer(&config, &multiplexer, client, storage, queue_mode);
     // TOMulticastSchedulerInterface *multicast = new TOMulticastSchedulerInterface(&config, &multiplexer, client);
-    bool enable_adaptive_switching = atoi(ConfigReader::Value("enable_adaptive_switching").c_str());
-    CustomSequencerSchedulerInterface sequencer(&config, &multiplexer, client, enable_adaptive_switching);
+    AbstractSequencer *sequencer;
+    if (ConfigReader::Value("ordering_layer") == "x") {
+        bool enable_adaptive_switching = atoi(ConfigReader::Value("enable_adaptive_switching").c_str());
+        sequencer = new CustomSequencerSchedulerInterface(&config, &multiplexer, client, enable_adaptive_switching);
+    } else if (ConfigReader::Value("ordering_layer") == "calvin") {
+        sequencer = new Sequencer(&config, &multiplexer, client, storage, queue_mode);
+
+    } else {
+        assert(false);
+    }
+    // CustomSequencerSchedulerInterface sequencer(&config, &multiplexer, client, enable_adaptive_switching);
     Connection *scheduler_connection = multiplexer.NewConnection("scheduler_");
 
     bool independent_mpo = atoi(ConfigReader::Value("independent_mpo").c_str());
@@ -312,11 +321,12 @@ int main(int argc, char **argv) {
             // sequencer.GetTxnsQueue(), client, queue_mode);
     }
 
-    // sequencer.WaitForStart();
+    sequencer->WaitForStart();
     Spin(atoi(ConfigReader::Value("duration").c_str()));
     scheduler->StopRunning();
-    sequencer.output(scheduler);
+    sequencer->output(scheduler);
 
+    delete sequencer;
     delete scheduler;
     delete scheduler_connection;
     delete partition_distribution;

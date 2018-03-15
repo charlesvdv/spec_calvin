@@ -54,6 +54,14 @@ extern double worker_end[SAMPLES];
 extern double scheduler_unlock[SAMPLES];
 #endif
 
+class AbstractSequencer {
+
+public:
+    virtual ~AbstractSequencer() {}
+    virtual void output(DeterministicScheduler *scheduler) = 0;
+    virtual void WaitForStart() {}
+};
+
 class TxnGetterClient {
   public:
     virtual ~TxnGetterClient() {}
@@ -66,7 +74,7 @@ class Client: public TxnGetterClient {
     virtual void GotTxnExecuted(int txn_id) = 0;
 };
 
-class Sequencer {
+class Sequencer: public AbstractSequencer {
   public:
     // The constructor creates background threads and starts the Sequencer's
     // main loops running.

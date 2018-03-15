@@ -7,6 +7,7 @@
 #include "sequencer/utils.h"
 #include "sequencer/to-multicast.h"
 #include "sequencer/protocol-switch.h"
+#include "sequencer/sequencer.h"
 #include "proto/txn.pb.h"
 #include "proto/switch-info.pb.h"
 #include "pthread.h"
@@ -93,7 +94,7 @@ private:
     int switching_done = 0;
 };
 
-class CustomSequencerSchedulerInterface {
+class CustomSequencerSchedulerInterface: public AbstractSequencer {
 public:
     CustomSequencerSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer,
         Client *client, bool enable_adaptive_switching = true);
