@@ -606,11 +606,15 @@ int TPCC::OrderStatusTransaction(StorageManager *storage) const {
     // Warehouse warehouse;
     int read_state = NORMAL;
     Value *warehouse_val = storage->ReadObject(txn->read_set(0), read_state);
+    if (read_state == SUSPENDED)
+        return SUSPENDED;
     Warehouse warehouse;
     assert(warehouse.ParseFromString(*warehouse_val));
 
     // District district;
     Value *district_val = storage->ReadObject(txn->read_set(1), read_state);
+    if (read_state == SUSPENDED)
+        return SUSPENDED;
     District district;
     LOG(txn->txn_id(), " before trying to read district "
                            << txn->read_set(1) << ", "
@@ -619,6 +623,8 @@ int TPCC::OrderStatusTransaction(StorageManager *storage) const {
 
     Customer customer;
     Value *customer_val = storage->ReadObject(txn->read_set(2), read_state);
+    if (read_state == SUSPENDED)
+        return SUSPENDED;
     assert(customer.ParseFromString(*customer_val));
 
     if (customer.last_order() == "") {
@@ -628,6 +634,8 @@ int TPCC::OrderStatusTransaction(StorageManager *storage) const {
     int order_line_count;
 
     Value *order_val = storage->ReadObject(customer.last_order(), read_state);
+    if (read_state == SUSPENDED)
+        return SUSPENDED;
     Order order;
     LOG(txn->txn_id(), " before trying to read order "
                            << customer.last_order() << ", value is "
@@ -640,6 +648,8 @@ int TPCC::OrderStatusTransaction(StorageManager *storage) const {
         snprintf(order_line_key, sizeof(order_line_key), "%sol%d",
                  customer.last_order().c_str(), i);
         Value *order_line_val = storage->ReadObject(order_line_key, read_state);
+        if (read_state == SUSPENDED)
+            return SUSPENDED;
         OrderLine order_line;
         assert(order_line.ParseFromString(*order_line_val));
     }
@@ -657,6 +667,8 @@ int TPCC::StockLevelTransaction(StorageManager *storage) const {
     // Read & update the warehouse object
     int read_state = NORMAL;
     Value *warehouse_val = storage->ReadObject(warehouse_key, read_state);
+    if (read_state == SUSPENDED)
+        return SUSPENDED;
     Warehouse warehouse;
     assert(warehouse.ParseFromString(*warehouse_val));
 
@@ -664,6 +676,8 @@ int TPCC::StockLevelTransaction(StorageManager *storage) const {
     Key district_key = txn->read_set(1);
     int latest_order_number;
     Value *district_val = storage->ReadObject(district_key, read_state);
+    if (read_state == SUSPENDED)
+        return SUSPENDED;
     LOG(txn->txn_id(), " before trying to read district "
                            << district_key << ", "
                            << reinterpret_cast<int64>(district_val));
@@ -678,6 +692,8 @@ int TPCC::StockLevelTransaction(StorageManager *storage) const {
 
         Order order;
         Value *order_val = storage->ReadObject(order_key, read_state);
+        if (read_state == SUSPENDED)
+            return SUSPENDED;
         assert(order.ParseFromString(*order_val));
 
         int ol_number = order.order_line_count();
@@ -689,6 +705,8 @@ int TPCC::StockLevelTransaction(StorageManager *storage) const {
             OrderLine order_line;
             Value *order_line_val =
                 storage->ReadObject(order_line_key, read_state);
+            if (read_state == SUSPENDED)
+                return SUSPENDED;
             assert(order_line.ParseFromString(*order_line_val));
 
             string item = order_line.item_id();
@@ -697,6 +715,8 @@ int TPCC::StockLevelTransaction(StorageManager *storage) const {
                      warehouse_key.c_str(), item.c_str());
             Stock stock;
             Value *stock_val = storage->ReadObject(stock_key, read_state);
+            if (read_state == SUSPENDED)
+                return SUSPENDED;
             assert(stock.ParseFromString(*stock_val));
         }
     }
@@ -718,6 +738,8 @@ int TPCC::DeliveryTransaction(StorageManager *storage) const {
 
     Key warehouse_key = txn->read_set(0);
     Value *warehouse_val = storage->ReadObject(warehouse_key, read_state);
+    if (read_state == SUSPENDED)
+        return SUSPENDED;
     Warehouse warehouse;
     assert(warehouse.ParseFromString(*warehouse_val));
 
@@ -730,6 +752,8 @@ int TPCC::DeliveryTransaction(StorageManager *storage) const {
         snprintf(district_key, sizeof(district_key), "%sd%d",
                  warehouse_key.c_str(), i);
         Value *district_val = storage->ReadObject(district_key, read_state);
+        if (read_state == SUSPENDED)
+            return SUSPENDED;
         District district;
         LOG(txn->txn_id(), " before trying to read district "
                                << district_key << ", "
@@ -750,6 +774,8 @@ int TPCC::DeliveryTransaction(StorageManager *storage) const {
             snprintf(order_key, sizeof(order_key), "%so%d", district_key,
                      district.smallest_order_id());
             Value *order_val = storage->ReadObject(order_key, read_state);
+            if (read_state == SUSPENDED)
+                return SUSPENDED;
             LOG(txn->txn_id(), " before trying to read and write order "
                                    << order_key << ", value is "
                                    << reinterpret_cast<int64>(order_val));
@@ -775,6 +801,11 @@ int TPCC::DeliveryTransaction(StorageManager *storage) const {
 
                 Value *order_line_val =
                     storage->ReadObject(order_line_key, read_state);
+                if (read_state == SUSPENDED)
+                    return SUSPENDED;
+                if (order_line_key == NULL) {
+                    continue;
+                }
                 OrderLine order_line;
                 // LOG(txn->txn_id(), " before trying to write orderline
                 // "<<order_line_key<<",
@@ -787,6 +818,8 @@ int TPCC::DeliveryTransaction(StorageManager *storage) const {
             }
 
             Value *customer_val = storage->ReadObject(customer_key, read_state);
+            if (read_state == SUSPENDED)
+                return SUSPENDED;
             Customer customer;
             assert(customer.ParseFromString(*customer_val));
             customer.set_balance(customer.balance() + total_amount);

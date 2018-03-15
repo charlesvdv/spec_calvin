@@ -26,8 +26,10 @@
 #include <atomic>
 #include <tr1/unordered_map>
 #include <vector>
+#include <cstdlib>
 
 #include "backend/simple_storage.h"
+#include "common/config_reader.h"
 #include "common/configuration.h"
 #include "common/types.h"
 #include "proto/message.pb.h"
@@ -148,6 +150,8 @@ class StorageManager {
     int max_counter_;
 
     TPCCArgs *tpcc_args;
+
+    bool independent_mpo_;
 };
 
 #endif // _DB_BACKEND_STORAGE_MANAGER_H_

@@ -18,6 +18,8 @@ StorageManager::StorageManager(Configuration *config, Connection *connection,
       txn_(NULL), message_(NULL), message_has_value_(false), exec_counter_(0),
       max_counter_(0) {
     tpcc_args = new TPCCArgs();
+
+    independent_mpo_ = atoi(ConfigReader::Value("independent_mpo").c_str());
 }
 
 StorageManager::StorageManager(Configuration *config, Connection *connection,
@@ -35,6 +37,7 @@ StorageManager::StorageManager(Configuration *config, Connection *connection,
     } else {
         message_ = NULL;
     }
+    independent_mpo_ = atoi(ConfigReader::Value("independent_mpo").c_str());
 }
 
 void StorageManager::Setup(TxnProto *txn) {
@@ -99,6 +102,10 @@ Value *StorageManager::ReadObject(const Key &key, int &read_state) {
         if (read_set_.count(key) == 0) {
             Value *result = actual_storage_->ReadObject(key, txn_->txn_id());
             while (result == NULL) {
+                if (independent_mpo_) {
+                    read_state = SUSPENDED;
+                    break;
+                }
                 result = actual_storage_->ReadObject(key, txn_->txn_id());
                 LOG(txn_->txn_id(), " WTF, key is empty: " << key);
             }
