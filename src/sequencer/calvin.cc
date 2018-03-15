@@ -6,7 +6,7 @@
 //
 // TODO(scw): replace iostream with cstdio
 
-#include "sequencer/sequencer.h"
+#include "sequencer/calvin.h"
 
 #include <iostream>
 #include <map>
@@ -288,16 +288,16 @@ void Sequencer::output(DeterministicScheduler *scheduler) {
         MessageProto message;
         while (to_receive_msg != 0) {
             if (connection_->GetMessage(&message)) {
-                if (message.type() == MessageProto::LATENCY) {
-                    std::cout << "Got latency info from "
-                              << message.source_node() << ", remaing is "
-                              << to_receive_msg - 1 << std::endl;
-                    for (int i = 0; i < message.latency_size(); ++i) {
-                        for (int j = 0; j < message.count(i); ++j)
-                            latency_util.add_latency(message.latency(i));
-                    }
-                    to_receive_msg--;
-                }
+                // if (message.type() == MessageProto::LATENCY) {
+                    // std::cout << "Got latency info from "
+                              // << message.source_node() << ", remaing is "
+                              // << to_receive_msg - 1 << std::endl;
+                    // for (int i = 0; i < message.latency_size(); ++i) {
+                        // for (int j = 0; j < message.count(i); ++j)
+                            // latency_util.add_latency(message.latency(i));
+                    // }
+                    // to_receive_msg--;
+                // }
             }
         }
         latency_util.reset_total();
@@ -314,24 +314,25 @@ void Sequencer::output(DeterministicScheduler *scheduler) {
         // Pack up my data
         std::cout << "Node " << configuration_->this_node_id
                   << " sending latency info to master" << std::endl;
-        MessageProto message;
-        message.set_destination_channel("sequencer");
-        message.set_source_node(configuration_->this_node_id);
-        message.set_destination_node(0);
-        message.set_type(MessageProto::LATENCY);
-        for (int i = 0; i < 1000; ++i) {
-            if (latency_util.small_lat[i] != 0) {
-                message.add_latency(i);
-                message.add_count(latency_util.small_lat[i]);
-            }
-        }
-        for (uint i = 0; i < latency_util.large_lat.size(); ++i) {
-            message.add_latency(latency_util.large_lat[i]);
-            message.add_count(1);
-        }
-        connection_->Send(message);
-        Spin(5);
+        // MessageProto message;
+        // message.set_destination_channel("sequencer");
+        // message.set_source_node(configuration_->this_node_id);
+        // message.set_destination_node(0);
+        // message.set_type(MessageProto::LATENCY);
+        // for (int i = 0; i < 1000; ++i) {
+            // if (latency_util.small_lat[i] != 0) {
+                // message.add_latency(i);
+                // message.add_count(latency_util.small_lat[i]);
+            // }
+        // }
+        // for (uint i = 0; i < latency_util.large_lat.size(); ++i) {
+            // message.add_latency(latency_util.large_lat[i]);
+            // message.add_count(1);
+        // }
+        // connection_->Send(message);
+        // Spin(5);
     }
 
     myfile.close();
 }
+

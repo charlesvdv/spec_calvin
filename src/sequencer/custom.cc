@@ -290,13 +290,13 @@ void CustomSequencer::output(DeterministicScheduler *scheduler) {
     // pthread_join(thread_, NULL);
     ofstream myfile;
     myfile.open(IntToString(configuration_->this_node_id) + "output.txt");
-    int count = 0;
-    double abort = 0;
+    // int count = 0;
+    // double abort = 0;
     myfile << "THROUGHPUT" << '\n';
-    while ((abort = scheduler->abort[count]) != -1 && count < THROUGHPUT_SIZE) {
-        myfile << scheduler->throughput[count] << ", " << abort << '\n';
-        ++count;
-    }
+    // while ((abort = scheduler->abort[count]) != -1 && count < THROUGHPUT_SIZE) {
+        // myfile << scheduler->throughput[count] << ", " << abort << '\n';
+        // ++count;
+    // }
 
     myfile << "SEP LATENCY" << '\n';
     int avg_lat = latency_util.average_latency();

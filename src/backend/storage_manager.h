@@ -45,7 +45,7 @@ class Scheduler;
 class LockedVersionedStorage;
 class TxnProto;
 class MessageProto;
-class Sequencer;
+// class Sequencer;
 
 class StorageManager {
   public:

@@ -723,23 +723,46 @@ class ReadLock {
 
 class LatencyUtils {
   public:
-    int small_lat[1000];
-    vector<int> large_lat;
+    map<int, int> sp_lat;
+    map<int, int> mp_lat;
     int64 total_latency;
     int total_count;
+    int64 sp_total_lat;
+    int sp_count;
+    int64 mp_total_lat;
+    int mp_count;
 
   public:
-    inline void add_latency(int latency) {
-        // std::cout<<"Adding latency "<<latency<<std::endl;
-        if (latency >= 1000)
-            large_lat.push_back(latency);
+    inline void add_latency(int latency, int type) {
+        if (type == 0 || type == 1)
+            sp_lat[latency] += 1;
         else
-            small_lat[latency] += 1;
+            mp_lat[latency] += 1;
     }
+
+    inline void add_sp_lat(int latency) { sp_lat[latency] += 1; }
+
+    inline void add_mp_lat(int latency) { mp_lat[latency] += 1; }
 
     void reset_total() {
         total_latency = 0;
         total_count = 0;
+        sp_total_lat = 0;
+        sp_count = 0;
+        mp_total_lat = 0;
+        mp_count = 0;
+    }
+
+    int average_mp_latency() {
+        if (total_latency == 0)
+            calculate_total();
+        return mp_total_lat / max(mp_count, 1);
+    }
+
+    int average_sp_latency() {
+        if (total_latency == 0)
+            calculate_total();
+        return sp_total_lat / max(sp_count, 1);
     }
 
     int average_latency() {
@@ -770,30 +793,97 @@ class LatencyUtils {
 
   private:
     void calculate_total() {
-        for (uint i = 0; i < 1000; ++i) {
-            total_latency += small_lat[i] * i;
-            total_count += small_lat[i];
+        for (std::map<int, int>::iterator it = sp_lat.begin();
+             it != sp_lat.end(); ++it) {
+            total_latency += it->first * it->second;
+            total_count += it->second;
+            sp_total_lat += it->first * it->second;
+            sp_count += it->second;
         }
-        for (uint i = 0; i < large_lat.size(); ++i) {
-            total_latency += large_lat[i];
-            total_count += 1;
+        for (std::map<int, int>::iterator it = mp_lat.begin();
+             it != mp_lat.end(); ++it) {
+            total_latency += it->first * it->second;
+            total_count += it->second;
+            mp_total_lat += it->first * it->second;
+            mp_count += it->second;
         }
     }
-    int get_percent_latency(double percent) {
-        int medium_cnt = total_count * percent, cnt = 0;
-        for (uint j = 0; j < 1000; ++j) {
-            if (cnt + small_lat[j] >= medium_cnt)
-                return j;
-            cnt += small_lat[j];
-        }
-        for (uint j = 0; j < large_lat.size(); ++j) {
-            if (cnt + 1 >= medium_cnt)
-                return large_lat[j];
-            cnt += 1;
-        }
-        return large_lat[large_lat.size() - 1];
-    }
+    int get_percent_latency(double percent) { return 0; }
 };
+
+// class LatencyUtils {
+  // public:
+    // int small_lat[1000];
+    // vector<int> large_lat;
+    // int64 total_latency;
+    // int total_count;
+
+  // public:
+    // inline void add_latency(int latency) {
+        // // std::cout<<"Adding latency "<<latency<<std::endl;
+        // if (latency >= 1000)
+            // large_lat.push_back(latency);
+        // else
+            // small_lat[latency] += 1;
+    // }
+
+    // void reset_total() {
+        // total_latency = 0;
+        // total_count = 0;
+    // }
+
+    // int average_latency() {
+        // if (total_latency == 0)
+            // calculate_total();
+        // return total_latency / total_count;
+    // }
+    // int medium_latency() {
+        // if (total_latency == 0)
+            // calculate_total();
+        // return get_percent_latency(0.5);
+    // }
+    // int the95_latency() {
+        // if (total_latency == 0)
+            // calculate_total();
+        // return get_percent_latency(0.95);
+    // }
+    // int the99_latency() {
+        // if (total_latency == 0)
+            // calculate_total();
+        // return get_percent_latency(0.99);
+    // }
+    // int the999_latency() {
+        // if (total_latency == 0)
+            // calculate_total();
+        // return get_percent_latency(0.999);
+    // }
+
+  // private:
+    // void calculate_total() {
+        // for (uint i = 0; i < 1000; ++i) {
+            // total_latency += small_lat[i] * i;
+            // total_count += small_lat[i];
+        // }
+        // for (uint i = 0; i < large_lat.size(); ++i) {
+            // total_latency += large_lat[i];
+            // total_count += 1;
+        // }
+    // }
+    // int get_percent_latency(double percent) {
+        // int medium_cnt = total_count * percent, cnt = 0;
+        // for (uint j = 0; j < 1000; ++j) {
+            // if (cnt + small_lat[j] >= medium_cnt)
+                // return j;
+            // cnt += small_lat[j];
+        // }
+        // for (uint j = 0; j < large_lat.size(); ++j) {
+            // if (cnt + 1 >= medium_cnt)
+                // return large_lat[j];
+            // cnt += 1;
+        // }
+        // return large_lat[large_lat.size() - 1];
+    // }
+// };
 
 template <typename T1, typename T2, typename T3>
 class MyTuple {
@@ -930,6 +1020,31 @@ class AtomicMap {
     // DISALLOW_COPY_AND_ASSIGN
     AtomicMap(const AtomicMap<K, V> &);
     AtomicMap &operator=(const AtomicMap<K, V> &);
+};
+
+template <typename T1, typename T2, typename T3, typename T4>
+class MyFour {
+  public:
+    T1 first;
+    T2 second;
+    T3 third;
+    T4 fourth;
+
+    MyFour(T1 t1, T2 t2, T3 t3, T4 t4) {
+        first = t1;
+        second = t2;
+        third = t3;
+        fourth = t4;
+    }
+
+    MyFour() {}
+
+    MyFour(const MyFour &mf) {
+        first = mf.first;
+        second = mf.second;
+        third = mf.third;
+        fourth = mf.fourth;
+    }
 };
 
 #endif // _DB_COMMON_UTILS_H_

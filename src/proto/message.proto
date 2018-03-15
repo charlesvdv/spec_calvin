@@ -34,6 +34,10 @@ message MessageProto {
     RMULTICAST_TXN = 12;
     TOMULTICAST_CLOCK_VOTE = 13;
     SWITCH_PROTOCOL = 14;
+
+	SKEEN_REQ = 15;
+	SKEEN_PROPOSE = 16;
+	SKEEN_REPLY = 17;
   };
   required MessageType type = 9;
 
@@ -50,6 +54,8 @@ message MessageProto {
   // For TXN_BATCH messages, 'batch_number' identifies the epoch of the txn
   // batch being sent.
   optional int64 batch_number = 21;
+
+  optional int64 propose_batch = 22;
 
   // For READ_RESULT messages, 'keys(i)' and 'values(i)' store the key and
   // result of a read, respectively.
@@ -73,4 +79,5 @@ message MessageProto {
   optional int32 restart = 2001;
 
   optional int64 txn_id = 2003;
+  optional int64 msg_id = 2004;
 }

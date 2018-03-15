@@ -11,6 +11,9 @@
 #include "proto/txn.pb.h"
 #include "proto/switch-info.pb.h"
 #include "pthread.h"
+#include "common/client.h"
+#include "scheduler/deterministic_scheduler.h"
+// #include "scheduler/scheduler.h"
 
 class Configuration;
 class Connection;
@@ -37,7 +40,6 @@ public:
             ;
     }
     void output(DeterministicScheduler *scheduler);
-
 private:
     void RunThread();
 

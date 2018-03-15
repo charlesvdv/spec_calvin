@@ -3,6 +3,7 @@
 
 #include "common/configuration.h"
 #include "common/utils.h"
+#include "common/config_reader.h"
 #include "paxos/paxos.h"
 #include "proto/txn.pb.h"
 #include "sequencer/sequencer.h"
@@ -16,6 +17,7 @@
 #include <string>
 #include <functional>
 #include <limits>
+#include "common/client.h"
 
 using std::pair;
 using std::vector;

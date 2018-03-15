@@ -23,6 +23,7 @@
 #include "proto/message.pb.h"
 #include "proto/txn.pb.h"
 #include "scheduler/scheduler.h"
+#include "common/client.h"
 
 using std::deque;
 using std::pair;
@@ -39,7 +40,7 @@ class Connection;
 class DeterministicLockManager;
 class Storage;
 class TxnProto;
-class Client;
+// class Client;
 
 // #define PREFETCHING
 

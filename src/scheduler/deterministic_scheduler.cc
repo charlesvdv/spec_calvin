@@ -175,7 +175,7 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
                     if (txn->writers_size() == 0 ||
                         txn->writers(0) == this_node_partition) {
                         latency_util.add_latency((GetUTime() - txn->seed()) /
-                                                 1000);
+                                                 1000, txn->writers_size());
                         ++scheduler->committed;
                     }
                     scheduler->client_->GotTxnExecuted(txn->txn_id());
@@ -211,7 +211,7 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
                 LOG(-1, " finished execution for " << txn->txn_id());
                 if (txn->writers_size() == 0 ||
                     txn->writers(0) == this_node_partition) {
-                    latency_util.add_latency((GetUTime() - txn->seed()) / 1000);
+                    latency_util.add_latency((GetUTime() - txn->seed()) / 1000, txn->writers_size());
                     ++scheduler->committed;
                 }
                 scheduler->client_->GotTxnExecuted(txn->txn_id());

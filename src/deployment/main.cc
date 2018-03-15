@@ -24,6 +24,8 @@
 #include "sequencer/sequencer.h"
 #include "sequencer/to-multicast.h"
 #include "sequencer/custom.h"
+#include "sequencer/calvin.h"
+#include "sequencer/genepi.h"
 
 //#define HOT 100
 
@@ -291,7 +293,8 @@ int main(int argc, char **argv) {
         sequencer = new CustomSequencerSchedulerInterface(&config, &multiplexer, client, enable_adaptive_switching);
     } else if (ConfigReader::Value("ordering_layer") == "calvin") {
         sequencer = new Sequencer(&config, &multiplexer, client, storage, queue_mode);
-
+    } else if (ConfigReader::Value("ordering_layer") == "genepi") {
+        sequencer = new GenepiSequencer(&config, &multiplexer, client, storage, queue_mode);
     } else {
         assert(false);
     }
