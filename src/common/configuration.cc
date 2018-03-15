@@ -28,7 +28,7 @@ void Configuration::InitInfo() {
     this_dc_id = all_nodes[this_node_id]->replica_id;
     this_node = all_nodes[this_node_id];
     for (auto info: all_nodes[this_node_id]->protocol_switch) {
-        this_node_protocol_switch.push(info);
+        this_node_protocol_switch.push_back(info);
     }
     set<int> all_partitions;
     for (uint i = 0; i < all_nodes.size(); ++i) {
@@ -200,7 +200,7 @@ void Configuration::ProcessConfigLine(char key[], char value[]) {
                 char *subsubtok;
                 int partition_id = atoi(strtok_r(subtok, "@", &subsubtok));
                 int switch_time = atoi(strtok_r(NULL, "@", &subsubtok));
-                node->protocol_switch.push_back(SwitchInfo(switch_time, partition_id, TxnProto::UNKNOW));
+                node->protocol_switch.push_back(SwitchInfo(switch_time, partition_id, TxnProto::UNKNOW, true));
             }
         }
 

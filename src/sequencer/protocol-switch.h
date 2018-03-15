@@ -10,9 +10,8 @@
 
 
 // Round increase to propose a future round for round switching.
-#define SWITCH_ROUND_DELTA 4
-#define SWITCH_ROUND_WITH_MAPPING 8
-#define HYBRID_SYNCED_MAX_DELTA 1
+#define SWITCH_ROUND_DELTA 10
+#define SWITCH_ROUND_WITH_MAPPING (SWITCH_ROUND_DELTA * 2)
 
 enum class ProtocolSwitchState {
     // Initialize transaction.

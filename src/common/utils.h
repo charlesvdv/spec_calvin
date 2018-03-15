@@ -813,8 +813,8 @@ class MyTuple {
 
 class SwitchInfo {
 public:
-    SwitchInfo(double time, int partition_id, TxnProto::ProtocolType protocol):
-        time(time), partition_id(partition_id), protocol(protocol) {}
+    SwitchInfo(double time, int partition_id, TxnProto::ProtocolType protocol, bool forced = false):
+        time(time), partition_id(partition_id), protocol(protocol), forced(forced) {}
 
     bool operator<(const SwitchInfo info) const {
         return this->time > info.time;
@@ -823,6 +823,8 @@ public:
     double time;
     int partition_id;
     TxnProto::ProtocolType protocol;
+
+    bool forced;
 };
 
 struct Node {

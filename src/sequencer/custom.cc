@@ -420,7 +420,8 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
     // Check if we need to initialize a protocol switch.
     // And initialize it.
     if (configuration_->this_node_protocol_switch.size()) {
-        auto next_switch = configuration_->this_node_protocol_switch.top();
+        std::sort(configuration_->this_node_protocol_switch.begin(), configuration_->this_node_protocol_switch.end());
+        auto next_switch = configuration_->this_node_protocol_switch[0];
         if ((GetTime() - start_time_) >= next_switch.time) {
             // TODO: intra-partition replication of switch_info
 
@@ -430,7 +431,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 next_switch.time += (GetTime() - start_time_) + 1 + (rand() % 5);
             } else if (next_switch.protocol == configuration_->partitions_protocol[next_switch.partition_id]) {
                 // We are already in the good protocol...
-                configuration_->this_node_protocol_switch.pop();
+                configuration_->this_node_protocol_switch.erase(configuration_->this_node_protocol_switch.begin());
             } else {
                 SwitchInfoProto switch_info;
                 switch_info.set_partition_type(GetPartitionType());
@@ -447,7 +448,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 protocol_switch_info_->protocol = next_switch.protocol;
                 protocol_switch_info_->initiator = true;
 
-                configuration_->this_node_protocol_switch.pop();
+                configuration_->this_node_protocol_switch.erase(configuration_->this_node_protocol_switch.begin());
             }
         }
     }
@@ -459,7 +460,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
     // Handle message.
     MessageProto msg;
-    while(switch_connection_->GetMessage(&msg)) {
+    while(switch_connection_->GetMessage(&msg) && !destructor_invoked_) {
         assert(msg.type() == MessageProto::SWITCH_PROTOCOL);
         SwitchInfoProto switch_info;
         switch_info.ParseFromString(msg.data(0));
@@ -573,7 +574,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
             if (protocol_switch_info_->initiator) {
                 // Reinsert transitions to retry it.
-                configuration_->this_node_protocol_switch.push(
+                configuration_->this_node_protocol_switch.push_back(
                     SwitchInfo((GetTime() + 3 + (rand() % 5)) - start_time_, protocol_switch_info_->partition_id, protocol_switch_info_->protocol)
                 );
             }
@@ -621,11 +622,11 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
             response_msg.set_type(SwitchInfoProto::LOW_LATENCY_MAPPING_RESPONSE);
             response_msg.set_mapping_id(protocol_switch_info_->mapping_id);
-            if (protocol_switch_info_->state == ProtocolSwitchState::WAIT_NETWORK_MAPPING_RESPONSE &&
-                    protocol_switch_info_->is_mapping_leader) {
-                SendSwitchMsg(&response_msg, partition_id);
-                continue;
-            }
+            // if (protocol_switch_info_->state == ProtocolSwitchState::WAIT_NETWORK_MAPPING_RESPONSE &&
+                    // protocol_switch_info_->is_mapping_leader) {
+                // SendSwitchMsg(&response_msg, partition_id);
+                // continue;
+            // }
             assert(protocol_switch_info_->state == ProtocolSwitchState::NETWORK_MAPPING);
 
             for (auto protocol: configuration_->partitions_protocol) {
@@ -654,8 +655,8 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             vector<int> partition_mapping_required;
             for (auto part: switch_info.neighbours_partition()) {
                 if (protocol_switch_info_->partitions_request_send.count(part) == 0
-                        && partition_id != configuration_->this_node_partition
-                        && partition_id != protocol_switch_info_->partition_id) {
+                        && part != configuration_->this_node_partition
+                        && part != protocol_switch_info_->partition_id) {
                     partition_mapping_required.push_back(part);
                 }
             }
@@ -805,7 +806,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
     std::ofstream cache_file(filename, std::ios_base::out);
 
     // Variables used for automatic switching.
-    const int TIME_DELTA = 5;
+    const int TIME_DELTA = 10;
     map<int, int> partitions_count;
     int num_round = 0;
     // int next_round = ROUND_DELTA;
@@ -834,7 +835,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
 
         vector<TxnProto*> ordered_txns;
         TxnProto *txn;
-        while(sequencer_->GetOrderedTxn(&txn)) {
+        while(sequencer_->GetOrderedTxn(&txn) && !destructor_invoked_) {
             ordered_txns.push_back(txn);
         }
 
@@ -897,6 +898,15 @@ void CustomSequencerSchedulerInterface::RunClient() {
 
         // Check if we need to switch some partitions.
         if (enable_adaptive_switching_ && (GetTime() - start_time_) > TIME_DELTA) {
+            // Remove switching from last run that we couldn't do.
+            for (auto it = configuration_->this_node_protocol_switch.begin(); it != configuration_->this_node_protocol_switch.end(); ) {
+                if (!(*it).forced) {
+                    it = configuration_->this_node_protocol_switch.erase(it);
+                } else {
+                    it += 1;
+                }
+            }
+
             std::vector<std::pair<int, int>> data(partitions_count.begin(), partitions_count.end());
             std::sort(data.begin(), data.end(), compFunc);
 
@@ -908,7 +918,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
                 if (((double)val/num_round) >= 0.75) {
                     // We should switch...
                     if (configuration_->partitions_protocol[part] == TxnProto::GENUINE) {
-                        configuration_->this_node_protocol_switch.push(
+                        configuration_->this_node_protocol_switch.push_back(
                             SwitchInfo(0, part, TxnProto::LOW_LATENCY)
                         );
                         break;
@@ -926,7 +936,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
                 if (((double)val/num_round) <= 0.25) {
                     // We should switch...
                     if (configuration_->partitions_protocol[part] == TxnProto::LOW_LATENCY) {
-                        configuration_->this_node_protocol_switch.push(
+                        configuration_->this_node_protocol_switch.push_back(
                             SwitchInfo(0, part, TxnProto::GENUINE)
                         );
                         break;

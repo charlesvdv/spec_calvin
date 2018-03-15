@@ -146,7 +146,7 @@ public:
     map<int, TxnProto::ProtocolType> partitions_protocol;
 
     // Pair with <time to switch, partition to switch>
-    priority_queue<SwitchInfo> this_node_protocol_switch;
+    vector<SwitchInfo> this_node_protocol_switch;
 
   private:
     // TODO(alex): Comments.
