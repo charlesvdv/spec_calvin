@@ -124,6 +124,9 @@ private:
     Configuration *configuration_;
 
     bool enable_adaptive_switching_;
+
+    double epoch_duration_;
+    double epoch_start_;
 };
 
 #endif

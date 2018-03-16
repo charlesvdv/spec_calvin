@@ -189,7 +189,7 @@ void CustomSequencer::RunThread() {
 
 
         // -- 6. Update logical clock for terminaison.
-        calvin_clock_value = max_clock + 1;
+        calvin_clock_value = max_clock;
         // std::cout << batch_count_ << " " << mec << " " << calvin_clock_value << "\n";
         genuine_->SetLogicalClock(max_clock  + 1);
 
@@ -279,9 +279,9 @@ vector<TxnProto*> CustomSequencer::HandleReceivedOperations() {
 LogicalClockT CustomSequencer::RunConsensus(vector<TxnProto*> batch, vector<TxnProto*> decided_txns) {
     Spin(0.1);
     auto c = genuine_->GetMaxExecutableClock();
-    if (decided_txns.size() != 0) {
-        c = std::min(c, decided_txns.back()->logical_clock());
-    }
+    // if (decided_txns.size() != 0) {
+        // c = std::min(c, decided_txns.back()->logical_clock());
+    // }
     return c;
 }
 
@@ -787,6 +787,8 @@ CustomSequencerSchedulerInterface::CustomSequencerSchedulerInterface(Configurati
     sequencer_ = new CustomSequencer(conf, multiplexer);
     // Create thread and launch them.
     pthread_create(&thread_, NULL, RunClientHelper, this);
+
+    epoch_duration_ = stof(ConfigReader::Value("batch_duration"));
 }
 
 CustomSequencerSchedulerInterface::~CustomSequencerSchedulerInterface() {
@@ -800,7 +802,8 @@ CustomSequencerSchedulerInterface::~CustomSequencerSchedulerInterface() {
 }
 
 void CustomSequencerSchedulerInterface::RunClient() {
-    int batch_count_ = 0;
+    int input_batch_count_ = 0;
+    int sequencer_batch_count_ = 0;
 
     string filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
     std::ofstream cache_file(filename, std::ios_base::out);
@@ -817,21 +820,33 @@ void CustomSequencerSchedulerInterface::RunClient() {
             return a.second < b.second;
         };
 
+    epoch_start_ = GetTime();
+    double now;
     while(!destructor_invoked_) {
-        vector<TxnProto*> batch;
-        for (int i = 0; i < max_batch_size; i++) {
-            int tx_base = configuration_->this_node_id +
-                          configuration_->num_partitions * batch_count_;
-            int txn_id_offset = i;
-            TxnProto *txn;
-            client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
-            if (txn == NULL) {
-                break;
+        now = GetTime();
+        if (now > epoch_start_ + input_batch_count_ * epoch_duration_) {
+            int txn_id_offset = 0;
+            vector<TxnProto*> batch;
+            while(!destructor_invoked_ &&
+                    now < epoch_start_ + (input_batch_count_ + 1) * epoch_duration_ &&
+                    txn_id_offset < max_batch_size) {
+            // for (int i = 0; i < max_batch_size; i++) {
+                int tx_base = configuration_->this_node_id +
+                              configuration_->num_partitions * input_batch_count_;
+                // int txn_id_offset = i;
+                TxnProto *txn;
+                client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
+                if (txn == NULL) {
+                    break;
+                }
+                txn->set_multipartition(Utils::IsReallyMultipartition(txn, configuration_->this_node_partition));
+                batch.push_back(txn);
+
+                txn_id_offset++;
             }
-            txn->set_multipartition(Utils::IsReallyMultipartition(txn, configuration_->this_node_partition));
-            batch.push_back(txn);
+            sequencer_->OrderTxns(batch);
+            input_batch_count_++;
         }
-        sequencer_->OrderTxns(batch);
 
         vector<TxnProto*> ordered_txns;
         TxnProto *txn;
@@ -864,7 +879,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
         msg.set_destination_channel("scheduler_");
         msg.set_type(MessageProto::TXN_BATCH);
         msg.set_destination_node(configuration_->this_node_id);
-        msg.set_batch_number(batch_count_);
+        msg.set_batch_number(sequencer_batch_count_);
         for (auto it = ordered_txns.begin(); it < ordered_txns.end(); it++) {
             // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
             // Format involved partitions.
@@ -952,7 +967,7 @@ void CustomSequencerSchedulerInterface::RunClient() {
             num_round = 0;
         }
 
-        batch_count_++;
+        sequencer_batch_count_++;
     }
 }
 
