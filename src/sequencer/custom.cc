@@ -65,7 +65,7 @@ void CustomSequencer::RunThread() {
 
         // -- 1. Replicate batch.
         // RunReplicationConsensus(batch);
-        mec = RunConsensus(batch, txn_decided_by_genuine);
+        LogicalClockT local_mec = RunConsensus(batch, txn_decided_by_genuine);
         // std::cout << batch_count_ << "local mec: " << mec << "\n";
 
         // -- 2. Dispatch operations with genuine protocol.
@@ -138,7 +138,7 @@ void CustomSequencer::RunThread() {
             msg.set_destination_node(configuration_->PartLocalNode(kv.first));
             msg.set_type(MessageProto::TXN_BATCH);
             msg.set_batch_number(batch_count_);
-            msg.set_mec(mec);
+            msg.set_mec(local_mec);
             for (auto txn: txns) {
                 msg.add_data(txn->SerializeAsString());
             }
@@ -172,6 +172,7 @@ void CustomSequencer::RunThread() {
 
         // -- 5. Get global max executable clock and receive message inside the execution queue.
         auto max_clock = mec;
+        mec = local_mec;
         for (auto msg: batch_messages_[batch_count_]) {
             // Calculate global mec.
             mec = std::min(mec, msg->mec());
@@ -370,7 +371,6 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
         // We can switch to low latency.
         if (protocol_switch_info_ != NULL && protocol_switch_info_->state == ProtocolSwitchState::SWITCH_TO_LOW_LATENCY) {
-            switching_done += 1;
             configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::LOW_LATENCY;
 
             std::cout << "switched to low latency, current round: " << batch_count_ << "\n" << std::flush;
@@ -516,7 +516,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                     assert(switch_info.partition_type() == SwitchInfoProto::HYBRID);
 
                     configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
-                    protocol_switch_info_->state = ProtocolSwitchState::MEC_SYNCHRO;
+                    protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_LOW_LATENCY;
 
                     // Wait for the first low latency message to synchronize round number.
                     while (!destructor_invoked_) {
@@ -535,7 +535,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 } else if (switch_info.partition_type() == SwitchInfoProto::FULL_GENUINE) {
                     assert(GetPartitionType() == SwitchInfoProto::HYBRID);
                     configuration_->partitions_protocol[protocol_switch_info_->partition_id] = TxnProto::TRANSITION;
-                    protocol_switch_info_->state = ProtocolSwitchState::MEC_SYNCHRO;
+                    protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_LOW_LATENCY;
                 } else {
                     // std::cout << "out-of-sync !!!\n" << std::flush;
                     // Out-of-sync partition.
