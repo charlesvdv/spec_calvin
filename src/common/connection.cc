@@ -282,12 +282,12 @@ void ConnectionMultiplexer::Send(const MessageProto &message) {
         } else {
             // Message is addressed to valid remote node. Channel validity will
             // be checked by the remote multiplexer.
-            if (message.destination_node() < 0 || message.destination_node() > 6) {
-                // TxnProto txn;
-                // txn.ParseFromString(message.data()[0]);
-                // std::cout << txn.DebugString() << "\n\n" << std::flush;
-                std::cout << message.DebugString() << "\n" << std::flush;
-            }
+            // if (message.destination_node() < 0 || message.destination_node() > 6) {
+                // // TxnProto txn;
+                // // txn.ParseFromString(message.data()[0]);
+                // // std::cout << txn.DebugString() << "\n\n" << std::flush;
+                // std::cout << message.DebugString() << "\n" << std::flush;
+            // }
             // std::cout << message.destination_node() << "\n" << std::flush;
             // assert(message.destination_node() >= 0 && message.destination_node() <= 6);
             pthread_mutex_lock(&send_mutex_[message.destination_node()]);
