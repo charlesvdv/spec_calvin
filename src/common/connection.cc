@@ -289,7 +289,7 @@ void ConnectionMultiplexer::Send(const MessageProto &message) {
                 std::cout << message.DebugString() << "\n" << std::flush;
             }
             // std::cout << message.destination_node() << "\n" << std::flush;
-            assert(message.destination_node() >= 0 && message.destination_node() <= 6);
+            // assert(message.destination_node() >= 0 && message.destination_node() <= 6);
             pthread_mutex_lock(&send_mutex_[message.destination_node()]);
             // LOG(0, " trying to send msg "<<message.type()<<", batch is
             // "<<message.batch_number());
