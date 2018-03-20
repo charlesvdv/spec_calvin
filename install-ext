@@ -10,6 +10,7 @@ mkdir -p ext
 cd ext
 
 ZOOKEEPER_VERSION="3.4.11"
+GOOGLETEST_VERSION="1.8.0"
 
 # zookeeper
 wget "http://apache.org/dist/zookeeper/zookeeper-$ZOOKEEPER_VERSION/zookeeper-$ZOOKEEPER_VERSION.tar.gz"
@@ -32,11 +33,10 @@ make -j7
 cd ..
 
 # googletest
-wget http://pkgs.fedoraproject.org/repo/pkgs/gtest/gtest-1.6.0.zip/4577b49f2973c90bf9ba69aa8166b786/gtest-1.6.0.zip
-unzip gtest-1.6.0.zip
-rm gtest-1.6.0.zip
-mv gtest-1.6.0 googletest
-cd googletest
+wget "https://github.com/google/googletest/archive/release-${GOOGLETEST_VERSION}.zip" -O googletest.zip
+unzip googletest
+rm googletest.zip
+cd "googletest-release-${GOOGLETEST_VERSION}"
 mkdir -p build && cd build
 cmake ..
 make -j7
