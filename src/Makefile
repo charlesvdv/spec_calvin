@@ -35,7 +35,7 @@ V = @
 
 # Set the compiler and compile-time loaded libraries
 CXX           := g++
-LDLIBRARYPATH := LD_LIBRARY_PATH=$(ZEROMQ)/src/.libs:$(PROTOB)/src/.libs:$(GTEST)/lib/.libs:$(ZOOKPR)/.libs:$(UTIL-LINUX)/
+LDLIBRARYPATH := LD_LIBRARY_PATH=$(ZEROMQ)/src/.libs:$(PROTOB)/src/.libs:$(GTEST)/build/googlemock/gtest:$(ZOOKPR)/.libs:$(UTIL-LINUX)/
 
 # For profiling (with gprof), this line should read 'PG = -pg'
 # For fast execution, this line should read 'PG ='.
@@ -53,7 +53,7 @@ CXXFLAGS += -Wall -Werror
 
 LDFLAGS := -static -lrt -pthread $(PG) \
            -lprotobuf -L$(PROTOB)/src/.libs \
-           -lgtest -L$(GTEST)/build \
+           -lgtest -L$(GTEST)/build/googlemock/gtest \
            -lzookeeper_mt -L$(ZOOKPR)/.libs
 ZMQLDFLAGS := -lzmq -L$(ZEROMQ)/src/.libs -luuid -L$(UTIL-LINUX)/.libs
 

@@ -36,7 +36,8 @@ cd ..
 wget "https://github.com/google/googletest/archive/release-${GOOGLETEST_VERSION}.zip" -O googletest.zip
 unzip googletest
 rm googletest.zip
-cd "googletest-release-${GOOGLETEST_VERSION}"
+mv "googletest-release-${GOOGLETEST_VERSION}" googletest
+cd googletest
 mkdir -p build && cd build
 cmake ..
 make -j7
