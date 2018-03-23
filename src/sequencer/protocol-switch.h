@@ -10,7 +10,7 @@
 
 
 // Round increase to propose a future round for round switching.
-#define SWITCH_ROUND_DELTA 10
+#define SWITCH_ROUND_DELTA 5
 #define SWITCH_ROUND_WITH_MAPPING (SWITCH_ROUND_DELTA * 2)
 
 enum class ProtocolSwitchState {
@@ -103,6 +103,9 @@ public:
     bool is_mapping_leader = false;
     // int this_partition_hop_count = -1;
     int mapping_leader = -1;
+
+    // Flag to check if in a mapping, both graphs are connected or not.
+    bool is_calvin_graph_already_connected = false;
 };
 
 #endif

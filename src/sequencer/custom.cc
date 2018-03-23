@@ -776,6 +776,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
             if (switch_info.mapping_already_handled()) {
                 protocol_switch_info_->partitions_request_send.erase(partition_id);
+                protocol_switch_info_->is_calvin_graph_already_connected = true;
                 continue;
             } else {
                 protocol_switch_info_->partitions_response_received.insert(partition_id);
@@ -783,6 +784,9 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
             vector<int> partition_mapping_required;
             for (auto part: switch_info.neighbours_partition()) {
+                if (part == protocol_switch_info_->partition_id) {
+                    protocol_switch_info_->is_calvin_graph_already_connected = true;
+                }
                 if (protocol_switch_info_->partitions_request_send.count(part) == 0
                         && part != configuration_->this_node_partition
                         && part != protocol_switch_info_->partition_id) {
@@ -802,13 +806,17 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             } else {
                 protocol_switch_info_->state = ProtocolSwitchState::WAIT_ROUND_TO_SWITCH;
             }
+            if (protocol_switch_info_->is_calvin_graph_already_connected || (!protocol_switch_info_->is_mapping_leader)) {
+                protocol_switch_info_->switching_round = std::max(
+                    protocol_switch_info_->switching_round,
+                    switch_info.switching_round()
+                );
+            } else {
+                protocol_switch_info_->switching_round = batch_count_ + SWITCH_ROUND_DELTA;
+            }
             protocol_switch_info_->final_round = std::max(
                 protocol_switch_info_->final_round,
                 switch_info.final_round()
-            );
-            protocol_switch_info_->switching_round = std::max(
-                protocol_switch_info_->switching_round,
-                switch_info.switching_round()
             );
         } else {
             assert(false);
@@ -833,10 +841,14 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             launch_switching_round_propagation = true;
         }
 
-        protocol_switch_info_->switching_round = std::max(
-            protocol_switch_info_->switching_round,
-            batch_count_ + SWITCH_ROUND_DELTA
-        );
+        if (protocol_switch_info_->is_calvin_graph_already_connected || (!protocol_switch_info_->is_mapping_leader)) {
+            protocol_switch_info_->switching_round = std::max(
+                protocol_switch_info_->switching_round,
+                batch_count_ + SWITCH_ROUND_DELTA
+            );
+        } else {
+            protocol_switch_info_->switching_round = batch_count_ + SWITCH_ROUND_DELTA;
+        }
         protocol_switch_info_->final_round = std::max(
             protocol_switch_info_->final_round,
             batch_count_ + SWITCH_ROUND_WITH_MAPPING
@@ -852,7 +864,8 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
     }
 
     if (launch_switching_round_propagation) {
-        std::cout << "launch propagation!! " << protocol_switch_info_->final_round << "\n";
+        std::cout << "launch propagation!! " << protocol_switch_info_->switching_round << " "
+            << protocol_switch_info_->final_round << "\n";
         protocol_switch_info_->state = ProtocolSwitchState::WAIT_ROUND_TO_SWITCH;
 
         SwitchInfoProto switch_info = SwitchInfoProto();
