@@ -289,8 +289,7 @@ int main(int argc, char **argv) {
     // TOMulticastSchedulerInterface *multicast = new TOMulticastSchedulerInterface(&config, &multiplexer, client);
     AbstractSequencer *sequencer;
     if (ConfigReader::Value("ordering_layer") == "x") {
-        bool enable_adaptive_switching = atoi(ConfigReader::Value("enable_adaptive_switching").c_str());
-        sequencer = new CustomSequencerSchedulerInterface(&config, &multiplexer, client, enable_adaptive_switching);
+        sequencer = new CustomSequencer(&config, &multiplexer, client);
     } else if (ConfigReader::Value("ordering_layer") == "calvin") {
         sequencer = new Sequencer(&config, &multiplexer, client, storage, queue_mode);
     } else if (ConfigReader::Value("ordering_layer") == "genepi") {

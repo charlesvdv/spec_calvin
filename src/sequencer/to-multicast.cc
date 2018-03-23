@@ -131,7 +131,7 @@ void TOMulticast::RunThread() {
                     LOG(GetLogicalClock(), "Unknow TO-MULTICAST state!");
             }
         } else {
-            Spin(0.01);
+            Spin(0.001);
         }
     }
 }

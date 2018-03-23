@@ -10,23 +10,30 @@ bool SortTxn(TxnProto *a, TxnProto *b) {
     }
 }
 
-CustomSequencer::CustomSequencer(Configuration *conf, ConnectionMultiplexer *multiplexer):
-    configuration_(conf), multiplexer_(multiplexer) {
+bool SortPairOptimize(std::pair<int, int> a, std::pair<int, int> b) {
+    return a.second < b.second;
+}
+
+CustomSequencer::CustomSequencer(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client):
+    configuration_(conf), multiplexer_(multiplexer), client_(client) {
     // std::cout << "builded!";
 
     genuine_ = new TOMulticast(conf, multiplexer);
     message_queues = new AtomicQueue<MessageProto>();
 
     connection_ = multiplexer->NewConnection("calvin", &message_queues);
+    sync_connection_ = multiplexer->NewConnection("sync");
     switch_connection_ = multiplexer->NewConnection("protocol-switch");
+    scheduler_connection_ = multiplexer->NewConnection("sequencer");
 
     // Create thread and launch them.
     pthread_create(&thread_, NULL, RunThreadHelper, this);
 
-    batch_count_ = 0;
-
     start_time_ = GetTime();
     protocol_switch_info_ = NULL;
+
+    string filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
+    order_file_.open(filename, std::ios_base::out);
 }
 
 CustomSequencer::~CustomSequencer() {
@@ -34,13 +41,12 @@ CustomSequencer::~CustomSequencer() {
 
     std::cout << "switching done: " << switching_done << "\n";
 
+    order_file_.close();
+
     delete genuine_;
     delete connection_;
     delete switch_connection_;
-}
-
-void CustomSequencer::OrderTxns(std::vector<TxnProto*> txns) {
-    received_operations_.Push(txns);
+    delete scheduler_connection_;
 }
 
 void CustomSequencer::RunThread() {
@@ -51,21 +57,31 @@ void CustomSequencer::RunThread() {
     LogicalClockT calvin_clock_value = 0;
     LogicalClockT mec = 0;
 
+    epoch_start_ = GetTime();
+    batch_count_ = 0;
+    scheduler_batch_count_ = 0;
+
     while(!destructor_invoked_) {
+        vector<TxnProto*> batch;
+        if (GetBatch(&batch) == false) {
+            Spin(0.001);
+            continue;
+        }
         // std::cout << "round: " << batch_count_ << "\n"
-            // << "received operation: " << received_operations_.Size() << "\n"
             // << "pending operation: " << pending_operations_.size() << "\n"
             // << "ready operation: " << ready_operations_.size() << "\n"
-            // << "executable operation: " << executable_operations_.size() << "\n"
-            // << "ordered operation: " << ordered_operations_.Size() << "\n" << std::flush;
+            // << "executable operation: " << executable_operations_.size() << "\n" << std::flush;
 
-        auto txn_decided_by_genuine = genuine_->GetDecided();
+        // double start = GetTime();
 
-        auto batch = HandleReceivedOperations();
+        // if (batch.size() == 0) {
+            // std::cout << "empty batch!\n";
+        // }
+        // auto batch = HandleReceivedOperations();
 
         // -- 1. Replicate batch.
         // RunReplicationConsensus(batch);
-        LogicalClockT local_mec = RunConsensus(batch, txn_decided_by_genuine);
+        LogicalClockT local_mec = RunConsensus(batch);
         // std::cout << batch_count_ << "local mec: " << mec << "\n";
 
         // -- 2. Dispatch operations with genuine protocol.
@@ -92,7 +108,7 @@ void CustomSequencer::RunThread() {
         // -- 3. Dispatch with low latency protocol.
 
         // -- 3.1 Get decided operations by genuine protocol.
-        // auto txn_decided_by_genuine = genuine_->GetDecided();
+        auto txn_decided_by_genuine = genuine_->GetDecided();
         for (auto txn: txn_decided_by_genuine) {
             // Save operation in the right queue.
             auto searched_txn = pending_operations_.find(txn->txn_id());
@@ -132,6 +148,7 @@ void CustomSequencer::RunThread() {
         ready_operations_.clear();
         for (auto kv: txn_by_partitions) {
             vector<TxnProto*> txns = kv.second;
+            // std::cout << "txns size for calvin dispatching: " << txns.size() << "\n";
             MessageProto msg;
             msg.set_destination_channel("calvin");
             msg.set_source_node(configuration_->this_node_id);
@@ -163,7 +180,7 @@ void CustomSequencer::RunThread() {
                 batch_messages_[rcv_msg->batch_number()].push_back(rcv_msg);
             } else {
                 // Spin(0.01);
-                Spin(0.5);
+                Spin(0.001);
                 // partition_num = configuration_->GetPartitionProtocolSize(TxnProto::LOW_LATENCY) +
                     // configuration_->GetPartitionProtocolSize(TxnProto::TRANSITION);
             }
@@ -199,12 +216,13 @@ void CustomSequencer::RunThread() {
 
         bool loop_breaked = false;
         bool got_txns_executed = false;
+        vector<TxnProto*> ordered_txns;
         for (auto it = executable_operations_.begin(); it != executable_operations_.end(); it++) {
             auto txn = *it;
             // if (txn->logical_clock() < mec || configuration_->low_latency_exclusive_node) {
             if (txn->logical_clock() < mec) {
                 txn->set_batch_number(batch_count_);
-                ordered_operations_.Push(txn);
+                ordered_txns.push_back(txn);
                 got_txns_executed = true;
             } else {
                 loop_breaked = true;
@@ -216,69 +234,180 @@ void CustomSequencer::RunThread() {
             executable_operations_.clear();
         }
 
-        batch_count_++;
+        // std::cout << "executable txns: "<< ordered_txns.size() << "\n";
+        ExecuteTxns(ordered_txns);
+
+        scheduler_batch_count_++;
+
+        int ROUND_DELTA = 15;
+        if (enable_adaptive_switching_ && (batch_count_ % ROUND_DELTA == 0)) {
+            // std::cout << "try to adapte switching\n";
+            OptimizeProtocols(ROUND_DELTA);
+        }
 
         HandleProtocolSwitch(got_txns_executed);
+
+        // std::cout << "elasped time: " << GetTime() - start << "\n";
+        // std::cout << "ok\n";
     }
+}
+
+bool CustomSequencer::GetBatch(vector<TxnProto*> *batch) {
+    double now = GetTime();
+    if (now > epoch_start_ + batch_count_ * epoch_duration_) {
+        int txn_id_offset = 0;
+        while(!destructor_invoked_ &&
+                now < epoch_start_ + (batch_count_ + 1) * epoch_duration_ &&
+                txn_id_offset < max_batch_size_) {
+            int tx_base = configuration_->this_node_id +
+                          configuration_->num_partitions * batch_count_;
+            TxnProto *txn;
+            client_->GetTxn(&txn, max_batch_size_ * tx_base + txn_id_offset);
+            if (txn == NULL) {
+                break;
+            }
+            txn->set_multipartition(Utils::IsReallyMultipartition(txn, configuration_->this_node_partition));
+
+            // Backup partition protocols inside txn.
+            auto involved_partitions = Utils::GetInvolvedPartitions(txn);
+            txn->set_source_partition(configuration_->this_node_partition);
+            for (auto part: involved_partitions) {
+                auto protocol = configuration_->partitions_protocol[part];
+                if (protocol == TxnProto::TRANSITION) {
+                    protocol = TxnProto::GENUINE;
+                }
+                (*txn->mutable_protocols())[part] = protocol;
+            }
+
+            batch->push_back(txn);
+
+            txn_id_offset++;
+        }
+        batch_count_++;
+        return true;
+    }
+    return false;
+}
+
+void CustomSequencer::ExecuteTxns(vector<TxnProto*> &txns) {
+    set<int> partition_touched;
+
+    MessageProto msg;
+    msg.set_destination_channel("scheduler_");
+    msg.set_type(MessageProto::TXN_BATCH);
+    msg.set_destination_node(configuration_->this_node_id);
+    msg.set_batch_number(scheduler_batch_count_);
+    for (auto it = txns.begin(); it < txns.end(); it++) {
+        // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
+        // Format involved partitions.
+
+        auto involved_partitions = Utils::GetInvolvedPartitions(*it);
+
+        // Check which partitions was involved with this partition.
+        if ((*it)->source_partition() != configuration_->this_node_partition) {
+            partition_touched.insert((*it)->source_partition());
+        } else {
+            for (auto part: involved_partitions) {
+                if (part != configuration_->this_node_partition) {
+                    partition_touched.insert(part);
+                }
+            }
+        }
+
+        std::ostringstream ss;
+        std::copy(involved_partitions.begin(), involved_partitions.end() - 1, std::ostream_iterator<int>(ss, ","));
+        ss << involved_partitions.back();
+
+        order_file_ << (*it)->txn_id() << ":" << ss.str() << ":" << (*it)->batch_number()
+            << ":" << (*it)->logical_clock() << "\n" << std::flush;
+        msg.add_data((*it)->SerializeAsString());
+    }
+
+    for (auto part: partition_touched) {
+        touched_partitions_count_[part]++;
+    }
+    scheduler_connection_->Send(msg);
+}
+
+void CustomSequencer::OptimizeProtocols(int round_delta) {
+    // Remove switching from last run that we couldn't do.
+    for (auto it = configuration_->this_node_protocol_switch.begin(); it != configuration_->this_node_protocol_switch.end(); ) {
+        if (!(*it).forced) {
+            it = configuration_->this_node_protocol_switch.erase(it);
+        } else {
+            it += 1;
+        }
+    }
+
+    std::vector<std::pair<int, int>> data(touched_partitions_count_.begin(), touched_partitions_count_.end());
+    std::sort(data.begin(), data.end(), SortPairOptimize);
+
+    // Check if we need to switch to LOW_LATENCY for some partitions.
+    for (auto it = data.rbegin(); it < data.rend(); it++) {
+        auto part = (*it).first;
+        auto val = (*it).second;
+
+        if (((double)val/round_delta) >= 0.75) {
+            // We should switch...
+            if (configuration_->partitions_protocol[part] == TxnProto::GENUINE) {
+                configuration_->this_node_protocol_switch.push_back(
+                    SwitchInfo(0, part, TxnProto::LOW_LATENCY)
+                );
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    // Check if we need to switch to GENUINE for some partitions.
+    for (auto it = data.begin(); it < data.end(); it++) {
+        auto part = (*it).first;
+        auto val = (*it).second;
+
+        if (((double)val/round_delta) <= 0.25) {
+            // We should switch...
+            if (configuration_->partitions_protocol[part] == TxnProto::LOW_LATENCY) {
+                configuration_->this_node_protocol_switch.push_back(
+                    SwitchInfo(0, part, TxnProto::GENUINE)
+                );
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    // Reset value
+    touched_partitions_count_.clear();
 }
 
 void CustomSequencer::Synchronize() {
-    set<int> node_ids;
-    for (auto node: configuration_->all_nodes) {
-        if (node.first != configuration_->this_node_id) {
-            node_ids.insert(node.first);
+    MessageProto synchronization_message;
+    synchronization_message.set_type(MessageProto::EMPTY);
+    synchronization_message.set_destination_channel("sync");
+    for (uint32 i = 0; i < configuration_->all_nodes.size(); i++) {
+        synchronization_message.set_destination_node(i);
+        if (i != static_cast<uint32>(configuration_->this_node_id))
+            sync_connection_->Send(synchronization_message);
+    }
+    uint32 synchronization_counter = 1;
+    while (synchronization_counter < configuration_->all_nodes.size()) {
+        synchronization_message.Clear();
+        if (sync_connection_->GetMessage(&synchronization_message)) {
+            assert(synchronization_message.type() == MessageProto::EMPTY);
+            synchronization_counter++;
         }
     }
 
-    double time = 0;
-    while(!node_ids.empty()) {
-        if (GetTime() > time + 2) {
-            MessageProto msg;
-            msg.set_source_node(configuration_->this_node_id);
-            msg.set_type(MessageProto::EMPTY);
-            msg.set_destination_channel("calvin");
-            for (auto node: node_ids) {
-                if (node != configuration_->this_node_id) {
-                    msg.set_destination_node(node);
-                    connection_->Send(msg);
-                }
-            }
-            time = GetTime();
-        }
+    std::cout << "synchronized\n";
+    delete sync_connection_;
 
-        MessageProto msg;
-        while(connection_->GetMessage(&msg)) {
-            assert(msg.type() == MessageProto::EMPTY);
-            node_ids.erase(msg.source_node());
-        }
-    }
+    started = true;
 }
 
-vector<TxnProto*> CustomSequencer::HandleReceivedOperations() {
-    vector<TxnProto*> txns;
-    vector<TxnProto*> tmp_txns;
-    while (received_operations_.Pop(&tmp_txns)) {
-        txns.insert(txns.end(), tmp_txns.begin(), tmp_txns.end());
-    }
-
-    for (auto &txn: txns) {
-        // Backup partitions protocols inside the transaction.
-        auto involved_partitions = Utils::GetInvolvedPartitions(txn);
-        txn->set_source_partition(configuration_->this_node_partition);
-        for (auto part: involved_partitions) {
-            auto protocol = configuration_->partitions_protocol[part];
-            if (protocol == TxnProto::TRANSITION) {
-                protocol = TxnProto::GENUINE;
-            }
-            (*txn->mutable_protocols())[part] = protocol;
-        }
-    }
-
-    return txns;
-}
-
-LogicalClockT CustomSequencer::RunConsensus(vector<TxnProto*> batch, vector<TxnProto*> decided_txns) {
-    Spin(0.1);
+LogicalClockT CustomSequencer::RunConsensus(vector<TxnProto*> batch) {
+    // Spin(0.1);
     auto c = genuine_->GetMaxExecutableClock();
     // if (decided_txns.size() != 0) {
         // c = std::min(c, decided_txns.back()->logical_clock());
@@ -301,8 +430,8 @@ void CustomSequencer::output(DeterministicScheduler *scheduler) {
 
     myfile << "SEP LATENCY" << '\n';
     int avg_lat = latency_util.average_latency();
-    // myfile << latency_util.average_sp_latency() << ", "
-           // << latency_util.average_mp_latency() << '\n';
+    myfile << latency_util.average_sp_latency() << ", "
+           << latency_util.average_mp_latency() << '\n';
     myfile << "LATENCY" << '\n';
     myfile << avg_lat << ", " << latency_util.total_latency << ", "
            << latency_util.total_count << '\n';
@@ -772,206 +901,206 @@ SwitchInfoProto::PartitionType CustomSequencer::GetPartitionType() {
     return SwitchInfoProto::HYBRID;
 }
 
-CustomSequencerSchedulerInterface::CustomSequencerSchedulerInterface(Configuration *conf,
-        ConnectionMultiplexer *multiplexer, Client *client, bool enable_adaptive_switching) {
-    client_ = client;
-    configuration_ = conf;
+// CustomSequencerSchedulerInterface::CustomSequencerSchedulerInterface(Configuration *conf,
+        // ConnectionMultiplexer *multiplexer, Client *client, bool enable_adaptive_switching) {
+    // client_ = client;
+    // configuration_ = conf;
 
-    connection_ = multiplexer->NewConnection("sequencer");
+    // connection_ = multiplexer->NewConnection("sequencer");
 
-    destructor_invoked_ = false;
+    // destructor_invoked_ = false;
 
-    enable_adaptive_switching_ = enable_adaptive_switching;
-    std::cout << "adaptive switching: " << enable_adaptive_switching_ << "\n";
+    // enable_adaptive_switching_ = enable_adaptive_switching;
+    // std::cout << "adaptive switching: " << enable_adaptive_switching_ << "\n";
 
-    sequencer_ = new CustomSequencer(conf, multiplexer);
-    // Create thread and launch them.
-    pthread_create(&thread_, NULL, RunClientHelper, this);
+    // sequencer_ = new CustomSequencer(conf, multiplexer);
+    // // Create thread and launch them.
+    // pthread_create(&thread_, NULL, RunClientHelper, this);
 
-    epoch_duration_ = stof(ConfigReader::Value("batch_duration"));
-}
+    // epoch_duration_ = stof(ConfigReader::Value("batch_duration"));
+// }
 
-CustomSequencerSchedulerInterface::~CustomSequencerSchedulerInterface() {
-    destructor_invoked_ = true;
+// CustomSequencerSchedulerInterface::~CustomSequencerSchedulerInterface() {
+    // destructor_invoked_ = true;
 
-    // Wait that the main loop is finished before deleting
-    // TOMulticast.
-    Spin(1);
-    delete sequencer_;
-    delete connection_;
-}
+    // // Wait that the main loop is finished before deleting
+    // // TOMulticast.
+    // Spin(1);
+    // delete sequencer_;
+    // delete connection_;
+// }
 
-void CustomSequencerSchedulerInterface::RunClient() {
-    int input_batch_count_ = 0;
-    int sequencer_batch_count_ = 0;
+// void CustomSequencerSchedulerInterface::RunClient() {
+    // int input_batch_count_ = 0;
+    // int sequencer_batch_count_ = 0;
 
-    string filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
-    std::ofstream cache_file(filename, std::ios_base::out);
+    // string filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
+    // std::ofstream cache_file(filename, std::ios_base::out);
 
-    // Variables used for automatic switching.
-    const int TIME_DELTA = 10;
-    map<int, int> partitions_count;
-    int num_round = 0;
-    // int next_round = ROUND_DELTA;
-    int start_time_ = GetTime() + TIME_DELTA;
+    // // Variables used for automatic switching.
+    // const int TIME_DELTA = 10;
+    // map<int, int> partitions_count;
+    // int num_round = 0;
+    // // int next_round = ROUND_DELTA;
+    // int start_time_ = GetTime() + TIME_DELTA;
 
-    std::function<bool(std::pair<int, int>, std::pair<int, int>)> compFunc =
-        [](std::pair<int, int> a, std::pair<int, int> b) {
-            return a.second < b.second;
-        };
+    // std::function<bool(std::pair<int, int>, std::pair<int, int>)> compFunc =
+        // [](std::pair<int, int> a, std::pair<int, int> b) {
+            // return a.second < b.second;
+        // };
 
-    epoch_start_ = GetTime();
-    double now;
-    while(!destructor_invoked_) {
-        now = GetTime();
-        if (now > epoch_start_ + input_batch_count_ * epoch_duration_) {
-            int txn_id_offset = 0;
-            vector<TxnProto*> batch;
-            while(!destructor_invoked_ &&
-                    now < epoch_start_ + (input_batch_count_ + 1) * epoch_duration_ &&
-                    txn_id_offset < max_batch_size) {
-            // for (int i = 0; i < max_batch_size; i++) {
-                int tx_base = configuration_->this_node_id +
-                              configuration_->num_partitions * input_batch_count_;
-                // int txn_id_offset = i;
-                TxnProto *txn;
-                client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
-                if (txn == NULL) {
-                    break;
-                }
-                txn->set_multipartition(Utils::IsReallyMultipartition(txn, configuration_->this_node_partition));
-                batch.push_back(txn);
+    // epoch_start_ = GetTime();
+    // double now;
+    // while(!destructor_invoked_) {
+        // now = GetTime();
+        // if (now > epoch_start_ + input_batch_count_ * epoch_duration_) {
+            // int txn_id_offset = 0;
+            // vector<TxnProto*> batch;
+            // while(!destructor_invoked_ &&
+                    // now < epoch_start_ + (input_batch_count_ + 1) * epoch_duration_ &&
+                    // txn_id_offset < max_batch_size) {
+            // // for (int i = 0; i < max_batch_size; i++) {
+                // int tx_base = configuration_->this_node_id +
+                              // configuration_->num_partitions * input_batch_count_;
+                // // int txn_id_offset = i;
+                // TxnProto *txn;
+                // client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
+                // if (txn == NULL) {
+                    // break;
+                // }
+                // txn->set_multipartition(Utils::IsReallyMultipartition(txn, configuration_->this_node_partition));
+                // batch.push_back(txn);
 
-                txn_id_offset++;
-            }
-            sequencer_->OrderTxns(batch);
-            input_batch_count_++;
-        }
-
-        vector<TxnProto*> ordered_txns;
-        TxnProto *txn;
-        while(sequencer_->GetOrderedTxn(&txn) && !destructor_invoked_) {
-            ordered_txns.push_back(txn);
-        }
-
-        if (ordered_txns.empty()) {
-            Spin(0.01);
-        } else {
-            num_round++;
-        }
-
-        // while(ordered_txns.size() == 0) {
-            // TxnProto *txn;
-            // while(sequencer_->GetOrderedTxn(&txn)) {
-                // ordered_txns.push_back(txn);
+                // txn_id_offset++;
             // }
-            // if (ordered_txns.size() == 0) {
-                // Spin(0.001);
-            // }
+            // sequencer_->OrderTxns(batch);
+            // input_batch_count_++;
         // }
 
-        // std::cout << "!!! batch count: " << batch_count_  << " " << ordered_txns.size() << "\n";
+        // vector<TxnProto*> ordered_txns;
+        // TxnProto *txn;
+        // while(sequencer_->GetOrderedTxn(&txn) && !destructor_invoked_) {
+            // ordered_txns.push_back(txn);
+        // }
 
-        // Used to check which partitions has been required for this round.
-        set<int> partition_touched;
+        // if (ordered_txns.empty()) {
+            // Spin(0.01);
+        // } else {
+            // num_round++;
+        // }
 
-        MessageProto msg;
-        msg.set_destination_channel("scheduler_");
-        msg.set_type(MessageProto::TXN_BATCH);
-        msg.set_destination_node(configuration_->this_node_id);
-        msg.set_batch_number(sequencer_batch_count_);
-        for (auto it = ordered_txns.begin(); it < ordered_txns.end(); it++) {
-            // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
-            // Format involved partitions.
+        // // while(ordered_txns.size() == 0) {
+            // // TxnProto *txn;
+            // // while(sequencer_->GetOrderedTxn(&txn)) {
+                // // ordered_txns.push_back(txn);
+            // // }
+            // // if (ordered_txns.size() == 0) {
+                // // Spin(0.001);
+            // // }
+        // // }
 
-            auto involved_partitions = Utils::GetInvolvedPartitions(*it);
+        // // std::cout << "!!! batch count: " << batch_count_  << " " << ordered_txns.size() << "\n";
 
-            // Check which partitions was involved with this partition.
-            if ((*it)->source_partition() != configuration_->this_node_partition) {
-                partition_touched.insert((*it)->source_partition());
-            } else {
-                for (auto part: involved_partitions) {
-                    if (part != configuration_->this_node_partition) {
-                        partition_touched.insert(part);
-                    }
-                }
-            }
+        // // Used to check which partitions has been required for this round.
+        // set<int> partition_touched;
 
-            std::ostringstream ss;
-            std::copy(involved_partitions.begin(), involved_partitions.end() - 1, std::ostream_iterator<int>(ss, ","));
-            ss << involved_partitions.back();
+        // MessageProto msg;
+        // msg.set_destination_channel("scheduler_");
+        // msg.set_type(MessageProto::TXN_BATCH);
+        // msg.set_destination_node(configuration_->this_node_id);
+        // msg.set_batch_number(sequencer_batch_count_);
+        // for (auto it = ordered_txns.begin(); it < ordered_txns.end(); it++) {
+            // // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
+            // // Format involved partitions.
 
-            cache_file << (*it)->txn_id() << ":" << ss.str() << ":" << (*it)->batch_number()
-                << ":" << (*it)->logical_clock() << "\n" << std::flush;
-            msg.add_data((*it)->SerializeAsString());
-        }
-        connection_->Send(msg);
+            // auto involved_partitions = Utils::GetInvolvedPartitions(*it);
 
-        for (auto part: partition_touched) {
-            partitions_count[part]++;
-        }
+            // // Check which partitions was involved with this partition.
+            // if ((*it)->source_partition() != configuration_->this_node_partition) {
+                // partition_touched.insert((*it)->source_partition());
+            // } else {
+                // for (auto part: involved_partitions) {
+                    // if (part != configuration_->this_node_partition) {
+                        // partition_touched.insert(part);
+                    // }
+                // }
+            // }
 
-        // Check if we need to switch some partitions.
-        if (enable_adaptive_switching_ && (GetTime() - start_time_) > TIME_DELTA) {
-            // Remove switching from last run that we couldn't do.
-            for (auto it = configuration_->this_node_protocol_switch.begin(); it != configuration_->this_node_protocol_switch.end(); ) {
-                if (!(*it).forced) {
-                    it = configuration_->this_node_protocol_switch.erase(it);
-                } else {
-                    it += 1;
-                }
-            }
+            // std::ostringstream ss;
+            // std::copy(involved_partitions.begin(), involved_partitions.end() - 1, std::ostream_iterator<int>(ss, ","));
+            // ss << involved_partitions.back();
 
-            std::vector<std::pair<int, int>> data(partitions_count.begin(), partitions_count.end());
-            std::sort(data.begin(), data.end(), compFunc);
+            // cache_file << (*it)->txn_id() << ":" << ss.str() << ":" << (*it)->batch_number()
+                // << ":" << (*it)->logical_clock() << "\n" << std::flush;
+            // msg.add_data((*it)->SerializeAsString());
+        // }
+        // connection_->Send(msg);
 
-            // Check if we need to switch to LOW_LATENCY for some partitions.
-            for (auto it = data.rbegin(); it < data.rend(); it++) {
-                auto part = (*it).first;
-                auto val = (*it).second;
+        // for (auto part: partition_touched) {
+            // partitions_count[part]++;
+        // }
 
-                if (((double)val/num_round) >= 0.75) {
-                    // We should switch...
-                    if (configuration_->partitions_protocol[part] == TxnProto::GENUINE) {
-                        configuration_->this_node_protocol_switch.push_back(
-                            SwitchInfo(0, part, TxnProto::LOW_LATENCY)
-                        );
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
+        // // Check if we need to switch some partitions.
+        // if (enable_adaptive_switching_ && (GetTime() - start_time_) > TIME_DELTA) {
+            // // Remove switching from last run that we couldn't do.
+            // for (auto it = configuration_->this_node_protocol_switch.begin(); it != configuration_->this_node_protocol_switch.end(); ) {
+                // if (!(*it).forced) {
+                    // it = configuration_->this_node_protocol_switch.erase(it);
+                // } else {
+                    // it += 1;
+                // }
+            // }
 
-            // Check if we need to switch to GENUINE for some partitions.
-            for (auto it = data.begin(); it < data.end(); it++) {
-                auto part = (*it).first;
-                auto val = (*it).second;
+            // std::vector<std::pair<int, int>> data(partitions_count.begin(), partitions_count.end());
+            // std::sort(data.begin(), data.end(), compFunc);
 
-                if (((double)val/num_round) <= 0.25) {
-                    // We should switch...
-                    if (configuration_->partitions_protocol[part] == TxnProto::LOW_LATENCY) {
-                        configuration_->this_node_protocol_switch.push_back(
-                            SwitchInfo(0, part, TxnProto::GENUINE)
-                        );
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
+            // // Check if we need to switch to LOW_LATENCY for some partitions.
+            // for (auto it = data.rbegin(); it < data.rend(); it++) {
+                // auto part = (*it).first;
+                // auto val = (*it).second;
 
-            // Reset value
-            partitions_count.clear();
-            start_time_ = GetTime();
-            num_round = 0;
-        }
+                // if (((double)val/num_round) >= 0.75) {
+                    // // We should switch...
+                    // if (configuration_->partitions_protocol[part] == TxnProto::GENUINE) {
+                        // configuration_->this_node_protocol_switch.push_back(
+                            // SwitchInfo(0, part, TxnProto::LOW_LATENCY)
+                        // );
+                        // break;
+                    // }
+                // } else {
+                    // break;
+                // }
+            // }
 
-        sequencer_batch_count_++;
-    }
-}
+            // // Check if we need to switch to GENUINE for some partitions.
+            // for (auto it = data.begin(); it < data.end(); it++) {
+                // auto part = (*it).first;
+                // auto val = (*it).second;
 
-void CustomSequencerSchedulerInterface::output(DeterministicScheduler *scheduler) {
-    destructor_invoked_ = true;
-    sequencer_->output(scheduler);
-}
+                // if (((double)val/num_round) <= 0.25) {
+                    // // We should switch...
+                    // if (configuration_->partitions_protocol[part] == TxnProto::LOW_LATENCY) {
+                        // configuration_->this_node_protocol_switch.push_back(
+                            // SwitchInfo(0, part, TxnProto::GENUINE)
+                        // );
+                        // break;
+                    // }
+                // } else {
+                    // break;
+                // }
+            // }
+
+            // // Reset value
+            // partitions_count.clear();
+            // start_time_ = GetTime();
+            // num_round = 0;
+        // }
+
+        // sequencer_batch_count_++;
+    // }
+// }
+
+// void CustomSequencerSchedulerInterface::output(DeterministicScheduler *scheduler) {
+    // destructor_invoked_ = true;
+    // sequencer_->output(scheduler);
+// }

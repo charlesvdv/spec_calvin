@@ -22,18 +22,18 @@ class TxnProto;
 class MessageProto;
 class ConnectionMultiplexer;
 
-class CustomSequencer {
+class CustomSequencer: public AbstractSequencer {
 public:
-    CustomSequencer(Configuration *conf, ConnectionMultiplexer *multiplexer);
+    CustomSequencer(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client);
 
     ~CustomSequencer();
 
     // Propose a batch of messages which needs ordering.
-    void OrderTxns(vector<TxnProto*> txns);
+    // void OrderTxns(vector<TxnProto*> txns);
 
-    bool GetOrderedTxn(TxnProto **txn) {
-        return ordered_operations_.Pop(txn);
-    }
+    // bool GetOrderedTxn(TxnProto **txn) {
+        // return ordered_operations_.Pop(txn);
+    // }
 
     void WaitForStart() {
         while (!started)
@@ -49,24 +49,24 @@ private:
     }
 
     void Synchronize();
-    vector<TxnProto*> HandleReceivedOperations();
+    bool GetBatch(vector<TxnProto*> *batch);
+    void ExecuteTxns(vector<TxnProto*> &txns);
+    void OptimizeProtocols(int round_delta);
 
-    LogicalClockT RunConsensus(vector<TxnProto*> batch, vector<TxnProto*> decided_ops);
+    LogicalClockT RunConsensus(vector<TxnProto*> batch);
 
     // Method used for protocol switching.
     void HandleProtocolSwitch(bool got_txns_executed);
     SwitchInfoProto::PartitionType GetPartitionType();
     void SendSwitchMsg(SwitchInfoProto *payload, int partition_id = -1);
-
     void LaunchPartitionMapping(vector<int> required_partition_mapping);
-
 
     ProtocolSwitchInfo *protocol_switch_info_;
 
     TOMulticast *genuine_;
 
-    AtomicQueue<vector<TxnProto*>> received_operations_;
-    AtomicQueue<TxnProto*> ordered_operations_;
+    // AtomicQueue<vector<TxnProto*>> received_operations_;
+    // AtomicQueue<TxnProto*> ordered_operations_;
 
     // The key is the transaction id.
     map<int, TxnProto*> pending_operations_;
@@ -80,13 +80,21 @@ private:
     ConnectionMultiplexer *multiplexer_;
 
     Connection *connection_;
+    Connection *sync_connection_;
     Connection *switch_connection_;
+    Connection *scheduler_connection_;
 
     AtomicQueue<MessageProto> *message_queues;
 
     pthread_t thread_;
 
+    Client *client_;
+
     int batch_count_;
+    // Different from batch_count_ because batch count should provide a inter-partition
+    // consensus when the scheduler should only be constant on a partition level
+    // (when we switch, we still need a steadly increasing batch_count and not a jump).
+    int scheduler_batch_count_;
 
     bool destructor_invoked_ = false;
     bool started = false;
@@ -94,39 +102,17 @@ private:
     int start_time_;
 
     int switching_done = 0;
-};
 
-class CustomSequencerSchedulerInterface: public AbstractSequencer {
-public:
-    CustomSequencerSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer,
-        Client *client, bool enable_adaptive_switching = true);
-    ~CustomSequencerSchedulerInterface();
-
-    void output(DeterministicScheduler *scheduler);
-private:
-    void RunClient();
-
-    static void *RunClientHelper(void *arg) {
-        reinterpret_cast<CustomSequencerSchedulerInterface*>(arg)->RunClient();
-        return NULL;
-    }
-
-    CustomSequencer *sequencer_;
-
-    Client *client_;
-
-    Connection *connection_;
-    pthread_t thread_;
-
-    bool destructor_invoked_;
-    int max_batch_size = atoi(ConfigReader::Value("max_batch_size").c_str());
-
-    Configuration *configuration_;
-
-    bool enable_adaptive_switching_;
-
-    double epoch_duration_;
     double epoch_start_;
+    int max_batch_size_ = atoi(ConfigReader::Value("max_batch_size").c_str());
+    double epoch_duration_ = stof(ConfigReader::Value("batch_duration").c_str());
+
+    bool enable_adaptive_switching_ = atoi(ConfigReader::Value("enable_adaptive_switching").c_str());
+
+    std::ofstream order_file_;
+
+    // Count touched partitions to get statistics for optimizing dispatching.
+    map<int, int> touched_partitions_count_;
 };
 
 #endif
