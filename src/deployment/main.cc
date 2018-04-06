@@ -1,4 +1,5 @@
 // Author: Alexander Thomson (thomson@cs.yale.edu)
+//
 // Author: Kun Ren (kun.ren@yale.edu)
 //
 // Main invokation of a single node in the system.
@@ -207,7 +208,7 @@ int main(int argc, char **argv) {
 
     PartitionDistribution *partition_distribution;
     if (ConfigReader::Value("partition_distribution") == "zipfian") {
-        partition_distribution = new ZipfianDistribution(&config, false, 2);
+        partition_distribution = new ZipfianDistribution(&config, 2);
     } else if (ConfigReader::Value("partition_distribution") == "deterministic") {
         partition_distribution = new DeterministicDistribution(&config);
     } else {

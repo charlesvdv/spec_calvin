@@ -22,13 +22,19 @@ public:
 
 class ZipfianDistribution: public PartitionDistribution {
 public:
-    ZipfianDistribution(Configuration *conf, bool switching_enabled = true, double skew=1.0):
-            conf_(conf), switching_enabled_(switching_enabled) {
+    ZipfianDistribution(Configuration *conf, double skew=1.0):
+            conf_(conf) {
         zipfian_cumul_.push_back(0);
 
-        for (auto i = 0; i < conf->num_partitions; i++) {
-            partitions_.push_back(i);
+        for (auto i = conf->num_partitions-1; i >= 0; i--) {
+            if (conf_->partitions_protocol[i] == TxnProto::LOW_LATENCY) {
+                partitions_.insert(partitions_.begin(), i);
+            } else {
+                partitions_.push_back(i);
+            }
+        }
 
+        for (auto i = 0; i < conf->num_partitions; i++) {
             double cumul = 1/std::pow(i+1, skew) + zipfian_cumul_[i];
             zipfian_cumul_.push_back(cumul);
         }
@@ -39,10 +45,11 @@ public:
         }
 
         srand(time(NULL));
-        std::random_shuffle(partitions_.begin(), partitions_.end());
+        int low_latency_part_count = conf->GetPartitionProtocolSize(TxnProto::LOW_LATENCY);
+        std::random_shuffle(partitions_.begin() + low_latency_part_count, partitions_.end());
 
         // Includes some warmup times.
-        switching_time_ = GetTime() + 15;
+        // switching_time_ = GetTime() + 15;
     }
 
     vector<int> GetPartitions(unsigned num) {
@@ -62,12 +69,12 @@ public:
             }
         }
 
-        if (switching_enabled_ && switching_time_ < GetTime()) {
-            auto last_partition = partitions_.back();
-            partitions_.pop_back();
-            partitions_.insert(partitions_.begin(), last_partition);
-            switching_time_ = GetTime() + (std::rand() % 5) + 5;
-        }
+        // if (switching_enabled_ && switching_time_ < GetTime()) {
+            // auto last_partition = partitions_.back();
+            // partitions_.pop_back();
+            // partitions_.insert(partitions_.begin(), last_partition);
+            // switching_time_ = GetTime() + (std::rand() % 5) + 5;
+        // }
         return vector<int>(partitions.begin(), partitions.end());
     }
 
@@ -91,8 +98,8 @@ private:
     vector<int> partitions_;
     // Sum cumulated zipfian distribution.
     vector<double> zipfian_cumul_;
-    bool switching_enabled_;
-    double switching_time_;
+    // bool switching_enabled_;
+    // double switching_time_;
 };
 
 class DeterministicDistribution: public PartitionDistribution {
