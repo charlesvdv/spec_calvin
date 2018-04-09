@@ -151,6 +151,9 @@ void Sequencer::GenerateLoad(double now, MessageProto &batch) {
                now < epoch_start_ + (batch_count_ + 1) * epoch_duration_ &&
                batch.data_size() < max_batch_size) {
             client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
+            if (txn == NULL) {
+                break;
+            }
             txn->SerializeToString(&txn_string);
             batch.add_data(txn_string);
             delete txn;
@@ -196,7 +199,9 @@ void Sequencer::RunReader() {
     epoch_start_ = GetTime();
 
     while (!deconstructor_invoked_) {
+        LOG(-1, "generate load!");
         GenerateLoad(GetTime(), batch);
+        LOG(-1, "load generated!");
 
         MessageProto *batch_message = NULL;
         bool got_batch = false;

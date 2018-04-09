@@ -189,6 +189,9 @@ void GenepiSequencer::RunWriter() {
                    txn_id_offset < max_batch_size) {
                 client_->GetTxn(&txn,
                                 max_batch_size * txn_base + txn_id_offset);
+                if (txn == NULL) {
+                    break;
+                }
                 string txn_string;
                 txn->SerializeToString(&txn_string);
                 batch->add_data(txn_string);
