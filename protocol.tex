@@ -153,10 +153,6 @@ The protocol can be decomposed in different steps:
         Each round, the protocol check if the genuine implementation has transactions which are decided (dispatched and
         in order). Those transactions are assigned a logical clock by the TO-MULTICAST protocol
         where each logical clock is consistent across partitions.
-        % Those logical clock are ensured by \GE{} to be consistent across partitions and the
-        % transaction are decided i
-        % and are ensured to be
-        % in total order between involved partitions.
 
         TO-MULTICAST assigns logical clock in a propose-decide fashion. First, every node sends its maximal logical clock
         to the other nodes involved. Next, each node decides the logical clock by taking the maximal value and updates
@@ -214,18 +210,9 @@ The protocol can be decomposed in different steps:
         required to ensure total order property: $calvin\_logical\_clock$ value should have a
         greater timestamp than any executed transactions during the round. This condition is
         required to make sure that transactions will be executable in the following rounds.
-        % This timestamp should
-        % be greater than any executed transactions' timestamp to avoid breaking total order.
         As the MEC is bounding the execution, each \PE{} connected partition knows the
         maximal clock executed. For simplicity, the $calvin\_logical\_clock$ is the maximum of
         all LMEC received which is always greater than the maximal clock executed.
-
-        % This logical clock shouldn't have a smaller
-        % value than any transaction's logical clock executed on any Calvin sequencer communicating partitions
-        % during the last round to avoid breaking total order. As the MEC
-        % is giving an agreement between partitions to bound transactions execution, the maximal LMEC value means that
-        % every partition connected with the Calvin sequencer will be able to execute a transaction with a logical clock of
-        % $calvin\_logical\_clock$ at least in the next round.
 
         Second, the logical clock of the genuine protocol is updated only to make sure that our protocol advances when
         no genuine communication occurs. As explained in the \textit{Clock assignation phase}, the logical clock
@@ -373,8 +360,6 @@ and the execution will be discussed.
     which means that \textbf{A} and \textbf{B} can be executed in total order in this round.
 
 \subsection{Correctness proof}
-
-% TODO: move this another place in the thesis when I will talk about ordering.
 We are assuming two transactions $T_a$ and $T_b$. $T_a \prec T_b$ relation implies $T_a$ is ordered before
 $T_b$ on every correct process involved in $T_a$ and $T_b$. The "$\prec$" relation is the total ordering property.
 $T_a < T_b$ for a process $P_a$ implies that $T_a$ is ordered before $T_b$ inside process $P_a$ and
@@ -389,11 +374,14 @@ $P_b$ which break the total order property. A violation of total order could hap
 If $T_x$ and $T_y$ have a consistent timestamp across partitions, partition $P_b$ executes $T_y$
 before $T_x$ because $P_b$ doesn't know that a transaction $T_x$ exists such as $T_x \prec T_y$.
 
-Given an expected total order relation such as $T_x \prec T_y$ and $T_x$ is not yet received by
-partition $P_b$, $P_b$ executes $T_y$ before $T_x$
-\Li{I do not understand why b is the only possible case after excluding a. Shouldn't you also mention b in this case?}.
+% Given an expected total order relation such as $T_x \prec T_y$ and $T_x$ is not yet received by
+% partition $P_b$, $P_b$ executes $T_y$ before $T_x$
+% \Li{I do not understand why b is the only possible case after excluding a. Shouldn't you also mention b in this case?}.
 
-A transaction can be dispatched to its involved partitions either only using one of the communication patterns, or using a combination of both, which we call a \textit{hybrid} dispatching. In the following text, we analyze whether the above cases are possible per dispatching type.
+A transaction can be dispatched to its involved partitions either only using
+one of the communication patterns, or using a combination of both, which we
+call a \textit{hybrid} dispatching. In the following text, we analyze whether
+the above cases are possible per dispatching type.
 
 First, we examine if case \textbf{a.} is possible for each dispatching type for a transaction $T_x$
 involving multiple partitions:
@@ -475,9 +463,15 @@ blocking it.
 
 The first step of a switching is an agreement between the two partitions. This agreement will make sure that
 every node in both partitions are aware of the switch. If one of the partition is already busy with an other
-switch, the switch initialization is aborted \Li{Why can't this request be queued? In the current manner, is it possible that some switching may never be triggered (no progress)?}. The agreement is also used to agree on several values that will
-be useful in the switch such as switching round, type of the partitions, \ldots Thoses values are stored in
-a variable called $switch\_metadata$.
+switch, the switch initialization is aborted and the switch will be retried later on.
+% \Li{Why can't this request be queued? In the current manner, is it possible that some switching may never be triggered (no progress)?}.
+The agreement is also used to agree on several values that will be useful in the switch and saved in an object called $switch\_metadata$ for
+convenience:
+
+\begin{description}
+   \item[$switching\_round$] is a round value at which both partitions can switch in a synchronized fashion
+   \item[$partition\_type$] is the type of the other partition that will be used to decide which switching protocol should be used
+\end{description}
 
 As explained above, the switch is divided in different cases depending on the type of protocol currently used.
 Line \ref{alg:line:init_switch} to \ref{alg:line:init_switch:end} handles the different cases possible.
@@ -524,11 +518,11 @@ Switching from the Calvin sequencer to TO-MULTICAST requires 4 steps:
         When the switching round happens (agreed upon during the \textit{init} phase), both partitions
         will change from Calvin sequencer protocol to a transition protocol. This transition protocol is
         running both protocol at the same time meaning that new transactions received will be dispatched
-        with the genuine protocol for the switching partitions while the Calvin sequencing message will still be sent \Li{why do we need to have both protocols running together? Isn't it enough to keep delivering message using Calvin until the switch round has reached?}.
+        with the genuine protocol for the switching partitions while the Calvin sequencing message will still be sent \Li{why do we need to have both protocols running together? Isn't it enough to keep delivering message using Calvin until the switch round has reached?} to ensure the next step in the switching will eventually terminate.
 
     \item[Waiting for required Calvin sequencing (line \ref{alg:line:gen:round})]
         Before switching to the genuine protocol, the switching protocol
-        needs to make sure that transaction no longer requires Calvin sequencing with the switching partition \Li{when can we know this condition? And can't this round be known in advance in the previous phase?}.
+        needs to make sure that transaction no longer requires Calvin sequencing with the switching partition \Li{when can we know this condition? And can't this round be known in advance in the previous phase?} by checking the pending transactions queue.
         Otherwise, some transactions may not be dispatched to the switching partition which will break
         the total order property. It means that the next step in the protocol switch is delayed until this condition is
         fulfilled.
@@ -542,7 +536,7 @@ Switching from the Calvin sequencer to TO-MULTICAST requires 4 steps:
 \end{description}
 
 \subsubsection{Pseudocode}
-\Li{For the pseudo-code: when is switching round decided?}
+\Li{For the pseudo-code: when is switching round decided?}\Ch{The first switching round is decided during the common phase}
 
 \begin{algorithmic}[1]
     \Upon{$state = INIT\_SWITCH\_TO\_GENUINE$ \textbf{and} \par\hspace{0.8cm}$current\_round = switch\_metadata.switching\_round$}\label{alg:line:gen:transition}
@@ -596,7 +590,10 @@ The protocol can be described in two steps:
     \item[Calvin sequencer switch (line \ref{alg:line:calvin_1:switch}-\ref{alg:line:calvin_1:switch:end})]
         Before switching to the Calvin sequencer protocol, a round is executed with the transition protocol
         to synchronize LMEC between the switching partitions. LMEC are required to make sure that variables
-        such as $calvin\_logical\_clock$ are updated before receiving transactions with the Calvin sequencer. \Li{why? Can't we use each partition's existing LMEC?}
+        such as $calvin\_logical\_clock$ are updated before receiving transactions with the Calvin sequencer.
+        \Li{why? Can't we use each partition's existing LMEC?}
+        \Ch{No because the LMEC from the switching partition is not yet received because the communication was using
+           genuine before so no LMEC send.}
         After this synchronization round, the protocol can be updated to the Calvin sequencer.
 \end{description}
 
@@ -632,63 +629,82 @@ When we have two hybrid partitions, we can have two partitions which are in the 
 different graphs. When we are initializing the protocol switching, it is impossible to tell if
 two partitions are in the same graph or not due to the network being asynchronous.
 
-Each time a message is send from a partition to another \Li{what kind of message?}, the communication must be a consensus to ensure
-consistency even in case of failure.
+% Removed because consensus is now more clairly explained where it's used in the steps.
+% Each time a message is send from a partition to another \Li{what kind of message?}, the communication must be a consensus to ensure
+% consistency even in case of failure.
 
 The protocol switching for two hybrid partitions requires updating the round number in one or two graphs
 which can described in multiple steps:
 
 \begin{description}
     \item[Graphs locking] Before updating the round number of the graphs, the protocol switch needs to make
-        sure that no other switch occurs in the graph. This locking is required to, first, make a map of
-        every partition involved in the graph and \Li{what do you mean 'make a map'? Do you mean just keeping track of the partitions?}, second, avoid switching with other partition inside the graph
+        sure that no other switch occurs in the graph. This locking is required to, first, keep track of
+        every partition involved in the graph and,
+        % \Li{what do you mean 'make a map'? Do you mean just keeping track of the partitions?}
+        second, avoid switching with other partition inside the graph
         to avoid unknown partition in the mapping. If there is already a switching occurring in the graph,
-        the switch needs to be aborted and every partition locked should also be aborted.
+        the switch needs to be aborted and every partition locked should be unlocked.
 
         The graph locking can be implemented in different ways. We choose an implementation where the switching
-        partitions are doing the heavy lifting which is easier to manage and reason about. The locking/mapping
-        protocol works by asking to every partitions its neighbours which are communicating with the Calvin sequencer.
-        Each partition gives us more information about the graph \Li{Try to be more specific. Who sends lock message? When is locking messages sent?}.
+        partitions are doing the heavy lifting which is easier to manage and reason about.
+        The switching partition will run a consensus with every of its neighbours partitions to lock them. Every neighbour will share their
+        own neighbours. Next, the switching partition will lock those partitions and receive neighbours information until
+        every partition in the graph as been discovered.
 
         During the graph locking, the switching protocol can also discover that there is only one graph because both
         partitions are in the same graph.
 
-    \item[Switching round agreement] A bit like in section \ref{sec:calvin-to-genuine}, the two switching partitions are going
-        to agree on values \Li{The following two variables are not listed in the previous section. If they are also needed by the previous section, you should list them above already}:
+   \item[Switching round agreement] If we use the same technique as \ref{sec:calvin-to-genuine} with $switching\_round$
+       and we have two distinc graphs, we may block a graph for a non-negligeable amount of time because the two graphs have different
+       round values. The lowest round value graph would have to catch up to the highest round value graph where the round difference could be
+       big. The highest round value graph will need to wait and will block during the catch-up.
 
-        \begin{description}
-            \item[Switching round] is the round at which the two graphs will switch.
-            \item[Final round] is the final round value after the switching
-        \end{description}
-
-        Two values are required because the switching round can be different between the two switching partitions if
-        there is two distinct graphs. A different value may be required because the two graphs could have a distant round number.
-        If the value are distant and we have a common switching round, one partition will need to wait before the other partition
-        is catching up its round lag \Li{Not clear. When will the waiting start? After switching been triggered, or before that?}.
+       To avoid blocking one graph, the two switching partition will agree on two different values. First, $switching\_round$
+       will be the round value at which the graph will switch. This value is either the same if the protocol detects that we only
+       had one graph or different if we have two distinc graphs. If we two different switching round value, we can reduce the
+       blocking time but the two graphs will be at different round value. The same round value is given by $final\_round$ which
+       jump the round value of both graphs to the same value. $final\_round$ is an agreement between the two switching partitions
+       ensuring both graphs have the same round at the end.
 
     \item[Graphs round update propagation] Thanks to the round locking, the two switching
         partitions know which partitions are in their graphs. The
         round update propagation will be handled by the switching partitions. $switching\_round$ and $final\_round$ will
-        be sent in every round update message \Li{You mean the round propagation message will be sent to all other switching partitions?}.
+        be sent to every locked partition.
+        % be sent in every round update message \Li{You mean the round propagation message will be sent to all other switching partitions?}.
 
     \item[LMEC Synchronization] Like in section \ref{sec:genuine-to-calvin-full-genuine}, before switching to the Calvin sequencer
-        protocol, we need to switch to the transition protocol between the two switching partitions \Li{Just the two partitions, or also all connected partitions?} after upgrading the
-        round number. The transition protocol will synchronize the various values of the \textit{CaMu} protocol. \Li{Overall, can't LMECs be synchronized together during switching round agreement phase?}
+        protocol, we need to switch to the transition protocol between the two switching partitions
+        \Li{Just the two partitions, or also all connected partitions?}\Ch{Just the two switching partitions because other partitions are already sharing their LMEC
+        because they are talking with Calvin.}
+        after upgrading the round number. The transition protocol will synchronize the various values of the \textit{CaMu} protocol.
+        \Li{Overall, can't LMECs be synchronized together during switching round agreement phase?}\Ch{No because to send Calvin message we need to have
+           synchronized round number.}
 
     \item[Calvin sequencer switching] After one synchronization round, both switching partitions can switch to the Calvin
         sequencer protocol safely.
-
-
 \end{description}
 
 \subsubsection{Pseudocode}
 
 For the sake of brevity, the protocol shown below is only described for the switching partition and not for partitions
-involved in the graph \Li{replace launch graph locking with a few lines of brief brief description would be more clear}.
+involved in the graph.
+\Li{replace launch graph locking with a few lines of brief brief description would be more clear}
+\Ch{added a small pseudo-code to reflect what the algo is really doing.}
 
 \begin{algorithmic}[1]
+    \Variables
+        \State $locked\_partitions$: a set containing partition ids of locked partition
+    \EndVariables
+
     \Upon{$state = INIT\_SWITCH\_TO\_LOW\_LATENCY\_HYBRID$}
-        \State $launch\_graph\_locking()$
+        % \State $launch\_graph\_locking()$
+    \State $unvisited\_partitions \gets $ \textit{set(get every neighbour partition using \PE{})}
+       \While{$unvisited\_partitions.size() != 0$}
+           \State $partition\_id \gets unvisited\_partitions.pop()$
+           \State $A-PROPOSE(partition\_id, PARTITION\_LOCK)$
+           \State $unvisited\_partitions.add(wait\ A-DECIDE(partition\_id))$
+           \State $locked\_partitions.add(partition\_id)$
+       \EndWhile
     \EndUpon
 
     \Upon{\textit{locking is finished}}
