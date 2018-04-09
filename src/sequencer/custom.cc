@@ -29,7 +29,6 @@ CustomSequencer::CustomSequencer(Configuration *conf, ConnectionMultiplexer *mul
     // Create thread and launch them.
     pthread_create(&thread_, NULL, RunThreadHelper, this);
 
-    start_time_ = GetTime();
     protocol_switch_info_ = NULL;
 
     string filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
@@ -60,6 +59,7 @@ void CustomSequencer::RunThread() {
     epoch_start_ = GetTime();
     batch_count_ = 0;
     scheduler_batch_count_ = 0;
+    start_time_ = GetTime();
 
     while(!destructor_invoked_) {
         vector<TxnProto*> batch;
