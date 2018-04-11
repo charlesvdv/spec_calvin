@@ -47,7 +47,7 @@
 \begin{document}
 \maketitle
 
-\section{Purpose}
+\section{Goal}
 
 Skewness in distributed data store is a well-known problem and the topic is still an active area of research.
 Most of the research are focused on partition skewness which is the difference of workload between
@@ -61,15 +61,12 @@ for some partitions than others.
 
 The protocol introduced here aims to reduce latency of MPOs dispatching and ordering for this kind of skewed workload.
 
-\section{Challenges} \label{sec:challenges}
+\section{General idea} \label{sec:challenges}
    The main difficulty in combining the use of {\GE} and {\PE} comes from the fact that each of them
    use different mechanisms to determine the order of transactions within each partition: {\GE}
    orders transactions by their timestamps; while {\PE} does not have the notion of timestamps, the
-   use of synchronized rounds across all partitions allow a deterministic transactions ordering.
-   % \Li{rephase, transactions within a round has to be further deterministically ordered}.
-   Figure
-   \ref{fig:inconsistency} exemplifies a case where two partitions can order transactions
-   differently. In the figure, $P1$ tries to dispatch $T5$ to $P3$ and $P4$. $P2$ also tries to
+   use of synchronized rounds across all partitions allow a deterministic transactions ordering. As a result, partitions can not directly order transactions delivered by {\GE} and {\PE}, as is illustrated in Figure
+   \ref{fig:inconsistency}. In the figure, $P1$ tries to dispatch $T5$ to $P3$ and $P4$. $P2$ also tries to
    dispatch $T4$ to $P3$ and $P4$. Note that since $P1$/$P2$ both communicate with $P3$ and $P4$,
    $T4$/$T5$ will be dispatched to $P3$ and $P4$ with different `identifies'\Ch{What does identifies
    means in this context?}. However, if there is
@@ -77,7 +74,7 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    $T1$ and $T2$ in different order.
 
    To mitigate this problem, we can associate transactions dispatched by \PE{} also with one
-   timestamp. As such, a partition can order transactions simply by their timestamps, as in {\GE}.
+   timestamp. As such, a partition can order all transactions simply by their timestamps, as in {\GE}.
    When a timestamp is assigned with \GE{}, every partition involved participates in the
    assignation; while \PE{} assigns the timestamp at the origin partition and requires ordering at the destination.
    Thus, \PE{} transactions are discovered each round by others partitions when \GE{} transactions are known in advance.
