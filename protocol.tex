@@ -62,26 +62,47 @@ for some partitions than others.
 The protocol introduced here aims to reduce latency of MPOs dispatching and ordering for this kind of skewed workload.
 
 \section{General idea} \label{sec:challenges}
+   % TODO: talk about:
+   %    - transactions can be dispatched with \GE and \PE at the same time
+   %    - Calvin timestamp is assigned
+   %    - switching ??
+   %    - improve consistency/monotocity explanation
    The main difficulty in combining the use of {\GE} and {\PE} comes from the fact that each of them
    use different mechanisms to determine the order of transactions within each partition: {\GE}
    orders transactions by their timestamps; while {\PE} does not have the notion of timestamps, the
-   use of synchronized rounds across all partitions allow a deterministic transactions ordering. As a result, partitions can not directly order transactions delivered by {\GE} and {\PE}, as is illustrated in Figure
+   use of synchronized rounds across all partitions allow a deterministic transactions ordering.
+   As a result, partitions can not directly order transactions delivered by {\GE} and {\PE}, as is illustrated in Figure
    \ref{fig:inconsistency}. In the figure, $P1$ tries to dispatch $T5$ to $P3$ and $P4$. $P2$ also tries to
    dispatch $T4$ to $P3$ and $P4$. Note that since $P1$/$P2$ both communicate with $P3$ and $P4$,
-   $T4$/$T5$ will be dispatched to $P3$ and $P4$ with different `identifies'\Ch{What does identifies
-   means in this context?}. However, if there is
+   $T4$/$T5$ will be dispatched to $P3$ and $P4$ with different ordering schemes.
+   However, if there is
    no mechanism to compare two transactions dispatched by {\GE} and {\PE}, $P3$ and $P4$ may execute
-   $T1$ and $T2$ in different order.
+   $T1$ and $T2$ in different order. \\
 
-   To mitigate this problem, we can associate transactions dispatched by \PE{} also with one
-   timestamp. As such, a partition can order all transactions simply by their timestamps, as in {\GE}.
+   To mitigate this problem, we can associate transactions dispatched by \PE{} a
+   timestamp, just like \GE{}. Partitions now have a common way to order transactions.
+   As timestamps must stay consistent across partitions, a transaction must have the same timestamp
+   in every partition to ensure total order. Thus, transactions are always first dispatched with \GE{}
+   to assign a timestamp to partitions using \GE{} and then dispatched with \PE{} to partitions
+   using the \PE{} protocol. As transactions are first assigned a timestamp with \GE{}, the
+   timestamp will always stay consistent.
+
+   In case where transactions are only dispatched with \PE{}, transactions are
+   assigned a timestamp which must be greater than any timestamps executed on
+   \PE{} connected partitions. Otherwise, a \PE{} dispatched transaction could
+   break the total order by having a smaller timestamp than an already executed
+   transaction. \\
+
+   Since transactions now have a consistent timestamp across partitions, partitions must make sure to
+   execute transactions in total order by making sure no transaction with a smaller timestamp compared
+   to any executed transactions' timestamp will ever be received.
+
    When a timestamp is assigned with \GE{}, every partition involved participates in the
    assignation; while \PE{} assigns the timestamp at the origin partition and requires ordering at the destination.
    Thus, \PE{} transactions are discovered each round by others partitions when \GE{} transactions are known in advance.
    \PE{} partitions must inform other partitions about their states every round to make sure, as
    \GE, that partitions are aware of pending transactions. Violating this condition can easily break the
    total order if partitions doesn't know which transactions' timestamp could be dispatched next.
-
 
    % Though, the transaction execution should b
    % Though, the assignment of timestamps to a batch of transactions should stick to the following two
