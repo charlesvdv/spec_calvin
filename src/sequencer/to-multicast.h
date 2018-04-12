@@ -18,6 +18,8 @@
 #include <functional>
 #include <limits>
 #include "common/client.h"
+#include "sequencer/sequencer.h"
+#include "sequencer/utils.h"
 
 using std::pair;
 using std::vector;
@@ -53,13 +55,12 @@ public:
     }
 };
 
-class TOMulticast {
+class TOMulticast: public AbstractSequencer {
 public:
-    TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer);
+    TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client = NULL);
 
     void Send(TxnProto *message);
     vector<TxnProto*> GetDecided();
-
 
     LogicalClockT GetMaxExecutableClock() {
         auto c = GetMinimumPendingClock();
@@ -82,6 +83,14 @@ public:
 
     bool HasTxnForPartition(int partition_id);
 
+    void output(DeterministicScheduler *scheduler);
+
+    void WaitForStart() {
+        while(!started) {
+            Spin(0.01);
+        }
+    }
+
     ~TOMulticast();
 private:
     void RunThread();
@@ -93,6 +102,8 @@ private:
 
     // Receive messages received skeen channel.
     void ReceiveMessages();
+
+    bool GetBatch(vector<TxnProto*> *batch);
 
     // Helper function to dispatch any transactions with R-MULTICAST.
     void DispatchOperationWithReliableMulticast(TxnProto *txn);
@@ -112,6 +123,9 @@ private:
     void UpdateClockVote(int txn_id, int partition_id, LogicalClockT vote);
 
     void IncrementLogicalClock();
+
+    void Synchronize();
+    void ExecuteTxns();
 
     // Next logical clock that will be assigned.
     LogicalClockT logical_clock_ = 0;
@@ -138,37 +152,49 @@ private:
     ConnectionMultiplexer *multiplexer_;
 
     Connection *skeen_connection_;
-
-    pthread_t thread_;
-
-    bool destructor_invoked_;
-
-    Paxos *paxos_;
-
-    std::ofstream debug_file_;
-};
-
-class TOMulticastSchedulerInterface {
-public:
-    TOMulticastSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client);
-    ~TOMulticastSchedulerInterface();
-private:
-    void RunClient();
-
-    static void *RunClientHelper(void *arg) {
-        reinterpret_cast<TOMulticastSchedulerInterface*>(arg)->RunClient();
-        return NULL;
-    }
-
-    TOMulticast *multicast_;
+    Connection *sync_connection_;
 
     Client *client_;
 
-    Connection *connection_;
     pthread_t thread_;
+
     bool destructor_invoked_;
-    int max_batch_size = atoi(ConfigReader::Value("max_batch_size").c_str());
-    Configuration *configuration_;
+
+    std::ofstream debug_file_;
+    std::ofstream order_file_;
+
+    // Check if the TO-MULTICAST will be used a client or it will works as a
+    // standalone version.
+    bool standalone_;
+    bool started = false;
+    int batch_count_;
+
+    double epoch_start_;
+    int max_batch_size_ = atoi(ConfigReader::Value("max_batch_size").c_str());
+    double epoch_duration_ = stof(ConfigReader::Value("batch_duration").c_str());
 };
+
+// class TOMulticastSchedulerInterface {
+// public:
+    // TOMulticastSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client);
+    // ~TOMulticastSchedulerInterface();
+// private:
+    // void RunClient();
+
+    // static void *RunClientHelper(void *arg) {
+        // reinterpret_cast<TOMulticastSchedulerInterface*>(arg)->RunClient();
+        // return NULL;
+    // }
+
+    // TOMulticast *multicast_;
+
+    // Client *client_;
+
+    // Connection *connection_;
+    // pthread_t thread_;
+    // bool destructor_invoked_;
+    // int max_batch_size = atoi(ConfigReader::Value("max_batch_size").c_str());
+    // Configuration *configuration_;
+// };
 
 #endif

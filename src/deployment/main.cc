@@ -289,12 +289,14 @@ int main(int argc, char **argv) {
     // Sequencer sequencer(&config, &multiplexer, client, storage, queue_mode);
     // TOMulticastSchedulerInterface *multicast = new TOMulticastSchedulerInterface(&config, &multiplexer, client);
     AbstractSequencer *sequencer;
-    if (ConfigReader::Value("ordering_layer") == "x") {
+    if (ConfigReader::Value("ordering_layer") == "camu") {
         sequencer = new CustomSequencer(&config, &multiplexer, client);
     } else if (ConfigReader::Value("ordering_layer") == "calvin") {
         sequencer = new Sequencer(&config, &multiplexer, client, storage, queue_mode);
     } else if (ConfigReader::Value("ordering_layer") == "genepi") {
         sequencer = new GenepiSequencer(&config, &multiplexer, client, storage, queue_mode);
+    } else if(ConfigReader::Value("ordering_layer") == "to-multicast") {
+        sequencer = new TOMulticast(&config, &multiplexer, client);
     } else {
         assert(false);
     }

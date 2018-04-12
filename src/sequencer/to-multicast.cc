@@ -1,9 +1,13 @@
 #include "sequencer/to-multicast.h"
 #include <fstream>
 
-TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer) {
+extern LatencyUtils latency_util;
+
+TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client) {
     configuration_ = conf;
     multiplexer_ = multiplexer;
+    standalone_ = client != NULL;
+    client_ = client;
     destructor_invoked_ = false;
 
     pthread_mutex_init(&decided_mutex_, NULL);
@@ -13,6 +17,7 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
 
     // Create custom connection.
     skeen_connection_ = multiplexer_->NewConnection("skeen");
+    sync_connection_ = multiplexer_->NewConnection("sync-multicast");
 
     // Create Paxos instance.
     // Connection *paxos_connection = multiplexer_->NewConnection("tomulticast-paxos");
@@ -22,6 +27,9 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
 
     string filename = "debug-" + std::to_string(configuration_->this_node_id) + ".txt";
     debug_file_.open(filename, std::ios_base::out);
+
+    filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
+    order_file_.open(filename, std::ios_base::out);
 }
 
 TOMulticast::~TOMulticast() {
@@ -72,9 +80,27 @@ vector<TxnProto*> TOMulticast::GetDecided() {
 }
 
 void TOMulticast::RunThread() {
-    Spin(0.5);
+    if (standalone_) {
+        Synchronize();
+    } else {
+        Spin(0.5);
+    }
+
+    epoch_start_ = GetTime();
 
     while(!destructor_invoked_) {
+        if (standalone_) {
+            ExecuteTxns();
+            vector<TxnProto*> batch;
+            if (GetBatch(&batch) == false) {
+                Spin(0.001);
+                continue;
+            }
+            // std::cout << "generate batch!!\n";
+            for (auto txn: batch) {
+                pending_operations_.Push(std::make_pair(txn, TOMulticastState::WaitingReliableMulticast));
+            }
+        }
         ReceiveMessages();
 
         pair<TxnProto*, TOMulticastState> txn_info;
@@ -351,62 +377,170 @@ bool TOMulticast::HasTxnForPartition(int partition_id) {
     return hasLowLatency;
 }
 
-TOMulticastSchedulerInterface::TOMulticastSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client) {
-    client_ = client;
-    configuration_ = conf;
+void TOMulticast::Synchronize() {
+    MessageProto synchronization_message;
+    synchronization_message.set_type(MessageProto::EMPTY);
+    synchronization_message.set_destination_channel("sync-multicast");
+    for (uint32 i = 0; i < configuration_->all_nodes.size(); i++) {
+        synchronization_message.set_destination_node(i);
+        if (i != static_cast<uint32>(configuration_->this_node_id))
+            sync_connection_->Send(synchronization_message);
+    }
+    uint32 synchronization_counter = 1;
+    while (synchronization_counter < configuration_->all_nodes.size()) {
+        synchronization_message.Clear();
+        if (sync_connection_->GetMessage(&synchronization_message)) {
+            assert(synchronization_message.type() == MessageProto::EMPTY);
+            synchronization_counter++;
+        }
+    }
 
-    connection_ = multiplexer->NewConnection("sequencer");
+    std::cout << "synchronized\n";
+    delete sync_connection_;
 
-    destructor_invoked_ = false;
-
-    multicast_ = new TOMulticast(conf, multiplexer);
-    // Create thread and launch them.
-    pthread_create(&thread_, NULL, RunClientHelper, this);
+    started = true;
 }
 
-TOMulticastSchedulerInterface::~TOMulticastSchedulerInterface() {
+void TOMulticast::output(DeterministicScheduler *scheduler) {
     destructor_invoked_ = true;
+    // pthread_join(thread_, NULL);
+    ofstream myfile;
+    myfile.open(IntToString(configuration_->this_node_id) + "output.txt");
+    // int count = 0;
+    // double abort = 0;
+    myfile << "THROUGHPUT" << '\n';
+    // while ((abort = scheduler->abort[count]) != -1 && count < THROUGHPUT_SIZE) {
+        // myfile << scheduler->throughput[count] << ", " << abort << '\n';
+        // ++count;
+    // }
 
-    // Wait that the main loop is finished before deleting
-    // TOMulticast.
-    Spin(1);
-    delete multicast_;
-    delete connection_;
+    myfile << "SEP LATENCY" << '\n';
+    int avg_lat = latency_util.average_latency();
+    myfile << latency_util.average_sp_latency() << ", "
+           << latency_util.average_mp_latency() << '\n';
+    myfile << "LATENCY" << '\n';
+    myfile << avg_lat << ", " << latency_util.total_latency << ", "
+           << latency_util.total_count << '\n';
+
+    myfile.close();
 }
 
-void TOMulticastSchedulerInterface::RunClient() {
-    int batch_count_ = 0;
-
-    string filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
-    std::ofstream cache_file(filename, std::ios_base::app);
-
-    while(!destructor_invoked_) {
-        for (int i = 0; i < max_batch_size; i++) {
-            Spin(0.01);
+bool TOMulticast::GetBatch(vector<TxnProto*> *batch) {
+    double now = GetTime();
+    if (now > epoch_start_ + batch_count_ * epoch_duration_) {
+        int txn_id_offset = 0;
+        while(!destructor_invoked_ &&
+                now < epoch_start_ + (batch_count_ + 1) * epoch_duration_ &&
+                txn_id_offset < max_batch_size_) {
             int tx_base = configuration_->this_node_id +
                           configuration_->num_partitions * batch_count_;
-            int txn_id_offset = i;
             TxnProto *txn;
-            client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
-            multicast_->Send(txn);
-        }
+            client_->GetTxn(&txn, max_batch_size_ * tx_base + txn_id_offset);
+            if (txn == NULL) {
+                break;
+            }
+            txn->set_multipartition(Utils::IsReallyMultipartition(txn, configuration_->this_node_partition));
 
-        std::vector<TxnProto*> decided;
-        while (decided.empty() && !destructor_invoked_) {
-            decided = multicast_->GetDecided();
-            Spin(0.001);
-        }
+            // Backup partition protocols inside txn.
+            auto involved_partitions = Utils::GetInvolvedPartitions(txn);
+            txn->set_source_partition(configuration_->this_node_partition);
+            for (auto part: involved_partitions) {
+                auto protocol = configuration_->partitions_protocol[part];
+                if (protocol == TxnProto::TRANSITION) {
+                    protocol = TxnProto::GENUINE;
+                }
+                (*txn->mutable_protocols())[part] = protocol;
+            }
 
-        MessageProto msg;
-        msg.set_destination_channel("scheduler_");
-        msg.set_type(MessageProto::TXN_BATCH);
-        msg.set_destination_node(configuration_->this_node_id);
-        msg.set_batch_number(batch_count_);
-        for (auto it = decided.begin(); it < decided.end(); it++) {
-            cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
-            msg.add_data((*it)->SerializeAsString());
+            batch->push_back(txn);
+
+            txn_id_offset++;
         }
-        connection_->Send(msg);
         batch_count_++;
+        return true;
     }
+    return false;
 }
+
+void TOMulticast::ExecuteTxns() {
+    auto decided = GetDecided();
+    std::cout << "decided size: " << decided.size() << "\n";
+    MessageProto msg;
+    msg.set_destination_channel("scheduler_");
+    msg.set_type(MessageProto::TXN_BATCH);
+    msg.set_destination_node(configuration_->this_node_id);
+    msg.set_batch_number(batch_count_);
+    for (auto it = decided.begin(); it < decided.end(); it++) {
+        auto involved_partitions = Utils::GetInvolvedPartitions(*it);
+
+        std::ostringstream ss;
+        std::copy(involved_partitions.begin(), involved_partitions.end() - 1, std::ostream_iterator<int>(ss, ","));
+        ss << involved_partitions.back();
+
+        order_file_ << (*it)->txn_id() << ":" << ss.str() << ":" << (*it)->batch_number()
+            << ":" << (*it)->logical_clock() << "\n" << std::flush;
+        msg.add_data((*it)->SerializeAsString());
+        // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
+    }
+    skeen_connection_->Send(msg);
+}
+
+// TOMulticastSchedulerInterface::TOMulticastSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client) {
+    // client_ = client;
+    // configuration_ = conf;
+
+    // connection_ = multiplexer->NewConnection("sequencer");
+
+    // destructor_invoked_ = false;
+
+    // multicast_ = new TOMulticast(conf, multiplexer);
+    // // Create thread and launch them.
+    // pthread_create(&thread_, NULL, RunClientHelper, this);
+// }
+
+// TOMulticastSchedulerInterface::~TOMulticastSchedulerInterface() {
+    // destructor_invoked_ = true;
+
+    // // Wait that the main loop is finished before deleting
+    // // TOMulticast.
+    // Spin(1);
+    // delete multicast_;
+    // delete connection_;
+// }
+
+// void TOMulticastSchedulerInterface::RunClient() {
+    // int batch_count_ = 0;
+
+    // string filename = "order-" + std::to_string(configuration_->this_node_id) + ".txt";
+    // std::ofstream cache_file(filename, std::ios_base::app);
+
+    // while(!destructor_invoked_) {
+        // for (int i = 0; i < max_batch_size; i++) {
+            // Spin(0.01);
+            // int tx_base = configuration_->this_node_id +
+                          // configuration_->num_partitions * batch_count_;
+            // int txn_id_offset = i;
+            // TxnProto *txn;
+            // client_->GetTxn(&txn, max_batch_size * tx_base + txn_id_offset);
+            // multicast_->Send(txn);
+        // }
+
+        // std::vector<TxnProto*> decided;
+        // while (decided.empty() && !destructor_invoked_) {
+            // decided = multicast_->GetDecided();
+            // Spin(0.001);
+        // }
+
+        // MessageProto msg;
+        // msg.set_destination_channel("scheduler_");
+        // msg.set_type(MessageProto::TXN_BATCH);
+        // msg.set_destination_node(configuration_->this_node_id);
+        // msg.set_batch_number(batch_count_);
+        // for (auto it = decided.begin(); it < decided.end(); it++) {
+            // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
+            // msg.add_data((*it)->SerializeAsString());
+        // }
+        // connection_->Send(msg);
+        // batch_count_++;
+    // }
+// }
