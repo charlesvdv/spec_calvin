@@ -18,6 +18,7 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
     // Create custom connection.
     skeen_connection_ = multiplexer_->NewConnection("skeen");
     sync_connection_ = multiplexer_->NewConnection("sync-multicast");
+    sequencer_connection_ = multiplexer_->NewConnection("sequencer");
 
     // Create Paxos instance.
     // Connection *paxos_connection = multiplexer_->NewConnection("tomulticast-paxos");
@@ -54,7 +55,7 @@ vector<TxnProto*> TOMulticast::GetDecided() {
     std::sort(decided_operations_.begin(), decided_operations_.end(), CompareTxn());
     for (auto it = decided_operations_.begin(); it < decided_operations_.end(); ) {
         auto txn = *it;
-        if (txn->logical_clock() <= min_pending_clock) {
+        if (txn->logical_clock() < min_pending_clock) {
             delivered.push_back(txn);
             decided_operations_.erase(it);
         } else {
@@ -87,18 +88,18 @@ void TOMulticast::RunThread() {
     }
 
     epoch_start_ = GetTime();
+    batch_count_ = -1;
+    int scheduler_batch_count_ = 0;
 
     while(!destructor_invoked_) {
         if (standalone_) {
-            ExecuteTxns();
+            ExecuteTxns(scheduler_batch_count_);
             vector<TxnProto*> batch;
-            if (GetBatch(&batch) == false) {
-                Spin(0.001);
-                continue;
-            }
-            // std::cout << "generate batch!!\n";
-            for (auto txn: batch) {
-                pending_operations_.Push(std::make_pair(txn, TOMulticastState::WaitingReliableMulticast));
+            if (GetBatch(&batch)) {
+                for (auto txn: batch) {
+                    // std::cout << "adding txn!!\n";
+                    pending_operations_.Push(std::make_pair(txn, TOMulticastState::WaitingReliableMulticast));
+                }
             }
         }
         ReceiveMessages();
@@ -108,7 +109,8 @@ void TOMulticast::RunThread() {
             auto txn = txn_info.first;
             auto txn_state = txn_info.second;
 
-            // std::cout << "waiting vote: " << waiting_vote_operations_.size() << "\n"
+            // std::cout << "pending ops: " << pending_operations_.Size() << "\n"
+                // << "waiting vote: " << waiting_vote_operations_.size() << "\n"
                 // << "decided ops: " << decided_operations_.size() << "\n";
             switch(txn_state) {
                 case TOMulticastState::WaitingReliableMulticast:
@@ -255,7 +257,15 @@ void TOMulticast::DispatchOperationWithReliableMulticast(TxnProto *txn) {
 }
 
 vector<int> TOMulticast::GetInvolvedPartitions(TxnProto *txn) {
-    return Utils::GetPartitionsWithProtocol(txn, TxnProto::GENUINE, configuration_->this_node_partition);
+    if (standalone_) {
+        auto partitions = Utils::GetInvolvedPartitions(txn);
+        auto this_partition_find = std::find(partitions.begin(), partitions.end(), configuration_->this_node_partition);
+        assert(this_partition_find != partitions.end());
+        partitions.erase(this_partition_find);
+        return partitions;
+    } else {
+        return Utils::GetPartitionsWithProtocol(txn, TxnProto::GENUINE, configuration_->this_node_partition);
+    }
 }
 
 // No longer needs to send data to its groups because protocol above
@@ -268,13 +278,13 @@ vector<int> TOMulticast::GetInvolvedNodes(TxnProto *txn) {
         auto part_nodes = configuration_->nodes_by_partition[part];
         nodes.insert(nodes.end(), part_nodes.begin(), part_nodes.end());
     }
-    auto test = Utils::GetInvolvedPartitions(txn);
+    // auto test = Utils::GetInvolvedPartitions(txn);
 
     return nodes;
 }
 
 LogicalClockT TOMulticast::GetMinimumPendingClock() {
-    LogicalClockT min_clock = MAX_CLOCK;
+    LogicalClockT min_clock = logical_clock_;
 
     // Checking `waiting_vote_operations_` queue.
     for (auto txn_info: waiting_vote_operations_) {
@@ -442,15 +452,15 @@ bool TOMulticast::GetBatch(vector<TxnProto*> *batch) {
             txn->set_multipartition(Utils::IsReallyMultipartition(txn, configuration_->this_node_partition));
 
             // Backup partition protocols inside txn.
-            auto involved_partitions = Utils::GetInvolvedPartitions(txn);
+            // auto involved_partitions = Utils::GetInvolvedPartitions(txn);
             txn->set_source_partition(configuration_->this_node_partition);
-            for (auto part: involved_partitions) {
-                auto protocol = configuration_->partitions_protocol[part];
-                if (protocol == TxnProto::TRANSITION) {
-                    protocol = TxnProto::GENUINE;
-                }
-                (*txn->mutable_protocols())[part] = protocol;
-            }
+            // for (auto part: involved_partitions) {
+                // auto protocol = configuration_->partitions_protocol[part];
+                // if (protocol == TxnProto::TRANSITION) {
+                    // protocol = TxnProto::GENUINE;
+                // }
+                // (*txn->mutable_protocols())[part] = protocol;
+            // }
 
             batch->push_back(txn);
 
@@ -462,14 +472,17 @@ bool TOMulticast::GetBatch(vector<TxnProto*> *batch) {
     return false;
 }
 
-void TOMulticast::ExecuteTxns() {
+void TOMulticast::ExecuteTxns(int &batch_count) {
     auto decided = GetDecided();
-    std::cout << "decided size: " << decided.size() << "\n";
+    if (decided.empty()) {
+        return;
+    }
+
     MessageProto msg;
     msg.set_destination_channel("scheduler_");
     msg.set_type(MessageProto::TXN_BATCH);
     msg.set_destination_node(configuration_->this_node_id);
-    msg.set_batch_number(batch_count_);
+    msg.set_batch_number(batch_count);
     for (auto it = decided.begin(); it < decided.end(); it++) {
         auto involved_partitions = Utils::GetInvolvedPartitions(*it);
 
@@ -482,7 +495,9 @@ void TOMulticast::ExecuteTxns() {
         msg.add_data((*it)->SerializeAsString());
         // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
     }
-    skeen_connection_->Send(msg);
+    sequencer_connection_->Send(msg);
+
+    batch_count++;
 }
 
 // TOMulticastSchedulerInterface::TOMulticastSchedulerInterface(Configuration *conf, ConnectionMultiplexer *multiplexer, Client *client) {

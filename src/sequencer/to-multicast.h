@@ -125,7 +125,7 @@ private:
     void IncrementLogicalClock();
 
     void Synchronize();
-    void ExecuteTxns();
+    void ExecuteTxns(int &batch_count);
 
     // Next logical clock that will be assigned.
     LogicalClockT logical_clock_ = 0;
@@ -153,6 +153,7 @@ private:
 
     Connection *skeen_connection_;
     Connection *sync_connection_;
+    Connection *sequencer_connection_;
 
     Client *client_;
 
