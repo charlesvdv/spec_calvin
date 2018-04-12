@@ -240,7 +240,7 @@ void CustomSequencer::RunThread() {
         scheduler_batch_count_++;
 
         int ROUND_DELTA = 15;
-        if (enable_adaptive_switching_ && (batch_count_ % ROUND_DELTA == 0)) {
+        if (enable_adaptive_switching_ && (batch_count_ % ROUND_DELTA == 0 && batch_count_ >= 2*ROUND_DELTA)) {
             // std::cout << "try to adapte switching\n";
             OptimizeProtocols(ROUND_DELTA);
         }
@@ -654,7 +654,8 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                             assert(rcv_msg->type() == MessageProto::TXN_BATCH);
                             batch_messages_[rcv_msg->batch_number()].push_back(rcv_msg);
                             if (configuration_->NodePartition(rcv_msg->source_node()) == protocol_switch_info_->partition_id) {
-                                batch_count_ = rcv_msg->batch_number();
+                                // Batch number is updated at the start of a round.
+                                batch_count_ = rcv_msg->batch_number() - 1;
                                 break;
                             }
                         } else {
