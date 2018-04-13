@@ -435,6 +435,11 @@ void CustomSequencer::output(DeterministicScheduler *scheduler) {
     myfile << "LATENCY" << '\n';
     myfile << avg_lat << ", " << latency_util.total_latency << ", "
            << latency_util.total_count << '\n';
+    myfile << "LATENCY BY TIME" << "\n";
+    auto lat_by_time = latency_util.latency_average_by_time();
+    for (auto info: lat_by_time) {
+        myfile << info.first << ":" << info.second << " ";
+    }
 
     myfile.close();
 }
