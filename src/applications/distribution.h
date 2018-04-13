@@ -10,6 +10,7 @@
 #include "common/configuration.h"
 #include "common/utils.h"
 #include "proto/txn.pb.h"
+#include "common/config_reader.h"
 
 using std::vector;
 
@@ -49,7 +50,19 @@ public:
         std::random_shuffle(partitions_.begin() + low_latency_part_count, partitions_.end());
 
         // Includes some warmup times.
-        // switching_time_ = GetTime() + 15;
+        start_time_ = GetTime();
+        switching_enabled_ = atoi(ConfigReader::Value("enable_adaptive_switching").c_str());
+
+        for (auto it = conf_->this_node_protocol_switch.begin(); it != conf_->this_node_protocol_switch.begin(); ) {
+            auto switch_info = *it;
+            if (switch_info.forced) {
+                switch_command_.push_back(switch_info);
+                conf_->this_node_protocol_switch.erase(it);
+            } else {
+                it++;
+            }
+        }
+        std::sort(switch_command_.begin(), switch_command_.end());
     }
 
     vector<int> GetPartitions(unsigned num) {
@@ -69,12 +82,19 @@ public:
             }
         }
 
-        // if (switching_enabled_ && switching_time_ < GetTime()) {
+        if (switching_enabled_ && !switch_command_.empty()) {
+            if (GetTime() - start_time_ > switch_command_[0].time) {
+                auto pos = std::find(partitions_.begin(), partitions_.end(), switch_command_[0].partition_id);
+                assert(pos != partitions_.end());
+                partitions_.erase(pos);
+                partitions_.insert(partitions_.begin(), switch_command_[0].partition_id);
+                switch_command_.erase(switch_command_.begin());
+            }
             // auto last_partition = partitions_.back();
             // partitions_.pop_back();
             // partitions_.insert(partitions_.begin(), last_partition);
             // switching_time_ = GetTime() + (std::rand() % 5) + 5;
-        // }
+        }
         return vector<int>(partitions.begin(), partitions.end());
     }
 
@@ -98,8 +118,9 @@ private:
     vector<int> partitions_;
     // Sum cumulated zipfian distribution.
     vector<double> zipfian_cumul_;
-    // bool switching_enabled_;
-    // double switching_time_;
+    bool switching_enabled_;
+    double start_time_;
+    vector<SwitchInfo> switch_command_;
 };
 
 class DeterministicDistribution: public PartitionDistribution {
