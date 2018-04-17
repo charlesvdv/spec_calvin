@@ -67,7 +67,7 @@ class MClient : public TxnGetterClient {
             }
 
             *txn =
-                microbenchmark.MicroTxnMP(txn_id, parts, multi_txn_num_parts);
+                microbenchmark.MicroTxnMP(txn_id, parts, remote_parts.size());
 
             (*txn)->set_multipartition(true);
         } else {
