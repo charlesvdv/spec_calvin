@@ -61,13 +61,13 @@ class MClient : public TxnGetterClient {
             int parts[multi_txn_num_parts];
             parts[0] = config_->this_node_partition;
             auto remote_parts = distrib_->GetPartitions(multi_txn_num_parts-1);
-            for (auto i = 1; i < multi_txn_num_parts; i++) {
-                assert(unsigned(i) < remote_parts.size()+1);
-                parts[i] = remote_parts[i-1];
+            for (unsigned i = 0; i < remote_parts.size(); i++) {
+                // assert(unsigned(i) < remote_parts.size()+1);
+                parts[i+1] = remote_parts[i];
             }
 
             *txn =
-                microbenchmark.MicroTxnMP(txn_id, parts, multi_txn_num_parts);
+                microbenchmark.MicroTxnMP(txn_id, parts, remote_parts.size());
 
             (*txn)->set_multipartition(true);
         } else {

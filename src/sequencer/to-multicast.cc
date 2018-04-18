@@ -17,8 +17,10 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
 
     // Create custom connection.
     skeen_connection_ = multiplexer_->NewConnection("skeen");
-    sync_connection_ = multiplexer_->NewConnection("sync-multicast");
-    sequencer_connection_ = multiplexer_->NewConnection("sequencer");
+    if (standalone_) {
+        sync_connection_ = multiplexer_->NewConnection("sync-multicast");
+        sequencer_connection_ = multiplexer_->NewConnection("sequencer");
+    }
 
     // Create Paxos instance.
     // Connection *paxos_connection = multiplexer_->NewConnection("tomulticast-paxos");
@@ -35,8 +37,18 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
 
 TOMulticast::~TOMulticast() {
     destructor_invoked_ = true;
-    delete skeen_connection_;
 
+    Spin(0.5);
+
+    debug_file_.close();
+    order_file_.close();
+
+    delete skeen_connection_;
+    if (standalone_) {
+        delete sequencer_connection_;
+        // Hack: process lock when sync_connection_ is deleted...
+        // delete sync_connection_;
+    }
     // delete paxos_;
 }
 

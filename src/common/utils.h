@@ -731,9 +731,28 @@ class LatencyUtils {
     int sp_count;
     int64 mp_total_lat;
     int mp_count;
+    int64 start_time;
+    // First pair value contains latency sum
+    // while the second contains the number of latency measure.
+    map<int64, std::pair<int, int>> latency_by_time;
+    int64 timeframe = 200000;
 
   public:
+    LatencyUtils() {
+        start_time = GetUTime();
+    }
+
     inline void add_latency(int latency, int type) {
+        int64 current_time = GetUTime() - start_time;
+        int64 key = (current_time / timeframe) * timeframe / 100000;
+        auto latency_by_time_find = latency_by_time.find(key);
+        if (latency_by_time_find == latency_by_time.end()) {
+            latency_by_time[key] = std::make_pair(latency, 1);
+        } else {
+            latency_by_time[key].first += latency;
+            latency_by_time[key].second += 1;
+        }
+
         if (type == 0 || type == 1)
             sp_lat[latency] += 1;
         else
@@ -751,6 +770,14 @@ class LatencyUtils {
         sp_count = 0;
         mp_total_lat = 0;
         mp_count = 0;
+    }
+
+    map<int64, int> latency_average_by_time() {
+        map<int64, int> average;
+        for (auto lat_info: latency_by_time) {
+            average[lat_info.first] = lat_info.second.first / lat_info.second.second;
+        }
+        return average;
     }
 
     int average_mp_latency() {
