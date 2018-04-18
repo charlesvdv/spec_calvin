@@ -195,6 +195,7 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
                     batch_message = NULL;
                     batch_number++;
                 } else {
+                    nothing_happened = false;
                     batch_message = GetBatch(
                         batch_number, scheduler->batch_connection_, scheduler);
                 }
