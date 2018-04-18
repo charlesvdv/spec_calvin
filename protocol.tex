@@ -53,7 +53,7 @@ Skewness in distributed data store is a well-known problem and the topic is stil
 Most of the research are focused on partition skewness which is the difference of workload between
 partitions in the system. Other data access pattern can also introduce a difference of workload which can
 reduce the performance of the system. This protocol aims to reduce one of this type of skewness introduced by
-partitioning, mainly multi-partition operations access pattern skewness. \Li{Tesdfasdfst}
+partitioning, mainly multi-partition operations access pattern skewness.
 
 As multi-partition operations (MPOs) are involving multiple partitions, we can assume that the data access pattern
 between the different partitions will not be the same. A partition will certainly have more \textit{affinity}
@@ -117,7 +117,7 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    When two partitions are switching, the main constraint is the round number synchronization between
    the two partitions. If the two partitions aren't synchronized, one partition will wait
    indefinitely a message from the other partition and thus, blocking the ordering.
-   The protocol is different wheter the current communication scheme is \GE{} or \PE{}. \\
+   The protocol is different whether the current communication scheme is \GE{} or \PE{}. \\
 
    When switching from \PE{} to \GE{}, the two switching partitions communications are
    scheduled by rounds. Thus, the switch must occur at the same round to avoid one partition
@@ -508,9 +508,27 @@ TO\_MULTICAST $\rightarrow$ Calvin sequencer and Calvin sequencer $\rightarrow$ 
 In addition, when we are switching from TO\_MULTICAST to the Calvin sequencer, we need to handle different
 cases because those cases are more tricky as we will see later.
 
-For the sake of simplicity, the protocol switching will be described as a state machine which
-breaks the switching into different steps. The switching is executed after each dispatching round without
-blocking it.
+The switching protocol is implemented as a state machine which
+breaks the switching into different steps. The switching logic is executed after each ordering round and
+this logic can take multiple ordering round to finalize the switch because each state is completely asynchronous
+to avoid blocking the main loop.
+
+Parallel switchings aren't authorized for a question of correctness. For example, if two parallel switchs are happening
+at the same time, some round synchronization process could create an inconsistent state in the system. \\
+
+The adaptive algorithm, which optimize the ordering latency by changing the protocol currently used between
+two partitions, is completely separated from the actual switching code. The adaptive algorithm can be
+implemented in many ways. Right now, the adaptive algorithm is executed every ten to twenty
+rounds and collects data, mainly MPO access patterns, to take decision whether to switch or not with
+other partitions.
+
+When the adaptive algorithm find a possible optimization, the switching command will be added to a queue which will be
+consumed by the switching protocol. When the adaptive algorithm is run again, the switching command queue
+is cleared to have the most recent switching decision.
+
+% This logic can take multiple rounds to finalize the switching.
+% is executed after each dispatching round without
+% blocking it.
 
 \subsection{Common}
 
