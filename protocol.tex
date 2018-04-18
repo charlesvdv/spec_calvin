@@ -105,8 +105,13 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    the clock assignation, while \PE{} imposes transactions with a given timestamp
    to other partitions. Thus, a partition communicating with \PE{} must inform
    other partitions about its state, and more precisly, the transactions' timestamps which haven't
-   been dispatched yet. The information shared is called the Maximal Executable Clock (MEC) as
-   it restrains the clock execution of other partitions.
+   been dispatched yet.
+   The information shared is called the Maximal Executable Clock (MEC) as
+   it restrains transactions' execution of other partitions by executing only transactions with a timestamp
+   smaller than the MEC.
+
+   The MEC is also used for timestamp assignation for Calvin only transactions as the MEC provides
+   enough information about other partitions' state.
 
    \subsection{Switching protocol}
 
