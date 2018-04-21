@@ -85,22 +85,27 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    To mitigate this problem, we can associate transactions dispatched by \PE{} with
    timestamps, just like \GE{}. Partitions now have a common way to order transactions but
    a transaction's timestamp must stay consistent across partitions to ensure total order.
-   As \GE{} works by assigning timestamps to transactions, a transaction is first going to
-   be assigned a timestamp with \GE{}. Finally, if the transaction requires it,
-   the transaction will be dispatched with \PE{} to partitions which haven't participate in
-   the timestamp assignation.
+   As \GE{} requires involvement from other partitions to assign a timestamp and \PE{}
+   imposes a timestamp to other partitions, the transaction will be first dispatched
+   with \GE{} to get a timestamp. Finally, the transaction will be dispatched with \PE{}
+   as it can impose the timestamp decided by \GE{}.
+   % As \GE{} works by assigning timestamps to transactions, a transaction is first going to
+   % be assigned a timestamp with \GE{}. Finally, if the transaction requires it,
+   % the transaction will be dispatched with \PE{} to partitions which haven't participate in
+   % the timestamp assignation.
 
    In case where a transaction must only be dispatched with \PE{}, the transaction is
    assigned a special timestamp value which must follow one condition to ensure
-   total order: the transaction's timestamp must be greater than any transactions' timestamp executed yet.
+   total order: the transaction's timestamp must be greater than any transactions' timestamp executed yet
+   in all involved partitions.
    Otherwise, a \PE{} dispatched transaction could
    break the total order by having a smaller timestamp than an already executed
    transaction. \\
 
    Since transactions have consistent timestamps across partitions, each partition
    must ensure to locally execute transactions in total order by following one rule:
-   a transaction can only be executed locally when it has a smaller timestamp
-   than any non-decided transactions in the system. \Ch{Seems clair why to me. Is it?}
+   a transaction can only be executed on partition $P_x$ when it has a smaller timestamp
+   than any non-delivered transactions involving $P_x$ in the system.
    \GE{} knows which transactions' timestamps aren't decided because partitions are involved in
    the clock assignation, while \PE{} imposes transactions with a given timestamp
    to other partitions. Thus, a partition communicating with \PE{} must inform
@@ -140,7 +145,7 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    When both partitions are using \PE{} and the two partitions are not in the
    same round, both partitions will need to jump to a common round number. This
    jump is not straightforward as partitions using \PE{} are connected to
-   other partitions using \PE{}, and so one. Each partition connected with \PE{}
+   other partitions using \PE{}, and so on. Each partition connected with \PE{}
    must have the same round number. Thus, every partition connected with \PE{}
    will need to jump round.
 
