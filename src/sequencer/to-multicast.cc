@@ -93,10 +93,9 @@ vector<TxnProto*> TOMulticast::GetDecided() {
 }
 
 void TOMulticast::RunThread() {
+    Spin(0.5);
     if (standalone_) {
         Synchronize();
-    } else {
-        Spin(0.5);
     }
 
     epoch_start_ = GetTime();
