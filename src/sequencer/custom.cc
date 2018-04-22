@@ -479,9 +479,10 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
                 if (protocol_switch_info_->switching_round != 0) {
                     protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_GENUINE;
-                } else {
-                    protocol_switch_info_->state = ProtocolSwitchState::WAITING_TO_GENUINE_ROUND_VOTE;
                 }
+                // else {
+                    // protocol_switch_info_->state = ProtocolSwitchState::WAITING_TO_GENUINE_ROUND_VOTE;
+                // }
                 protocol_switch_info_->switching_round =
                     std::max(protocol_switch_info_->switching_round, switching_round);
             }
@@ -731,9 +732,10 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
         } else if (switch_info.type() == SwitchInfoProto::GENUINE_SWITCH_ROUND_VOTE) {
             if (protocol_switch_info_->switching_round != 0) {
                 protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_GENUINE;
-            } else {
-                protocol_switch_info_->state = ProtocolSwitchState::WAITING_TO_GENUINE_ROUND_VOTE;
             }
+            // else {
+                // protocol_switch_info_->state = ProtocolSwitchState::WAITING_TO_GENUINE_ROUND_VOTE;
+            // }
 
             auto switching_round = switch_info.switching_round();
             protocol_switch_info_->switching_round =
