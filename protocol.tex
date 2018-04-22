@@ -103,9 +103,14 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    transaction. \\
 
    Since transactions have consistent timestamps across partitions, each partition
-   must ensure to locally execute transactions in total order by following one rule:
-   a transaction can only be executed on partition $P_x$ when it has a smaller timestamp
-   than any non-delivered transactions involving $P_x$ in the system.
+   must ensure to locally execute transactions in total order by following the order
+   of timestamps assigned to transactions.
+   Therefore, a transaction $T$ can be executed locally on partition $P$ only when $P$ is sure that no
+   transaction will have a smaller timestamp than $T$. As future timestamps have
+   bigger value than already assigned timestamps thanks to logical clock properties,
+   partition $P$ must only ensure that $T$ has the smallest timestamp amongs
+   the current transactions being ordered involving $P$.
+
    \GE{} knows which transactions' timestamps aren't decided because partitions are involved in
    the clock assignation, while \PE{} imposes transactions with a given timestamp
    to other partitions. Thus, a partition communicating with \PE{} must inform
@@ -115,19 +120,43 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    it restrains transactions' execution of other partitions by executing only transactions with a timestamp
    smaller than the MEC.
 
+   % As \GE{} involves every partition involved in a transaction, \GE{} knows which transactions
+
+   % by following one rule:
+   % a transaction can only be executed on partition $P_x$ when it has a smaller timestamp
+   % than any non-delivered transactions involving $P_x$ in the system. \Ch{TO-Multicast explains
+   % the concept the same way.}
+
+
+   % If a partition knows the transactions involved with it at time $t$ and transactions at $t+\lambda$ have
+   % a higher timestamp than transactions ordered at $t$,
+
+   % \GE{} knows which transactions' timestamps aren't decided because partitions are involved in
+   % the clock assignation, while \PE{} imposes transactions with a given timestamp
+   % to other partitions. Thus, a partition communicating with \PE{} must inform
+   % other partitions about its state, and more precisly, the transactions' timestamps which haven't
+   % been dispatched yet.
+   % The information shared is called the Maximal Executable Clock (MEC) as
+   % it restrains transactions' execution of other partitions by executing only transactions with a timestamp
+   % smaller than the MEC.
+
    The MEC is also used for timestamp assignation for Calvin only transactions as the MEC provides
    enough information about other partitions' state.
 
    \subsection{Switching protocol}
 
    The switching protocol allows two partitions to change the communication scheme currently
-   used between them. The switching protocol is described as a state machine where the state is updated
-   after each ordering round to avoid blocking the main loop.
+   used between them. This switch will allow the system to react to any change in workloads.
+   As the switching can cause overhead, the protocol was designed to avoid blocking the ordering
+   protocol.
 
    When two partitions are switching, the main constraint is the round number synchronization between
-   the two partitions. If the two partitions aren't synchronized, one partition will wait
+   the two partitions \Ch{The problem is for both switching because when switching from calvin to to-multicast
+   the switch should happen at the same round on both partitions.}. If the two partitions don't switch at the same round, the
+   partition, which hasn't switch yet, will wait
    indefinitely a message from the other partition and thus, blocking the ordering.
-   The protocol is different whether the current communication scheme is \GE{} or \PE{}. \\
+   The switching protocol differs depending on the current employed communication scheme between the two switching partitions. \\
+   % The protocol is different whether the current communication scheme is \GE{} or \PE{}. \\
 
    When switching from \PE{} to \GE{}, the two switching partitions communications are
    scheduled by rounds. Thus, the switch must occur at the same round to avoid one partition
@@ -136,8 +165,10 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    Otherwise, some transactions may not be dispatched on some partitions and thus, breaking
    the total order. \\
 
-   When switching from \GE{} to \PE{}, the two switching partitions must be on the same
-   round. Otherwise, like stated above, one of the partitions will wait for the other.
+   When switching from \GE{} to \PE{},
+   the switching protocol should ensure that after switching, the two partitions have the same round number.
+   % the two switching partitions must be on the same round.
+   Otherwise, like stated above, one of the partitions will wait for the other.
    When rounds are not used in one of the two partitions (i.e. the partition is
    only using \GE{}), the partition can change its round to synchronize with the other
    partition without any problem.
