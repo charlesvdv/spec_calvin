@@ -457,15 +457,15 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
         if (protocol_switch_info_->state == ProtocolSwitchState::WAITING_LOW_LATENCY_TXN_EXECUTION) {
             bool hasStillTxns = genuine_->HasTxnForPartition(protocol_switch_info_->partition_id);
 
-            for (auto txn: executable_operations_) {
-                auto protocols = txn->protocols();
-                if (protocols.find(protocol_switch_info_->partition_id) != protocols.end()) {
-                    auto protocol = protocols[protocol_switch_info_->partition_id];
-                    if (protocol == TxnProto::LOW_LATENCY && txn->source_partition() == configuration_->this_node_partition) {
-                        hasStillTxns = true;
-                    }
-                }
-            }
+            // for (auto txn: executable_operations_) {
+                // auto protocols = txn->protocols();
+                // if (protocols.find(protocol_switch_info_->partition_id) != protocols.end()) {
+                    // auto protocol = protocols[protocol_switch_info_->partition_id];
+                    // if (protocol == TxnProto::LOW_LATENCY && txn->source_partition() == configuration_->this_node_partition) {
+                        // hasStillTxns = true;
+                    // }
+                // }
+            // }
 
             if (!hasStillTxns) {
                 auto switching_round = batch_count_ + SWITCH_ROUND_DELTA;
@@ -702,6 +702,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             if (switch_info.has_mapping_id() && switch_info.mapping_id() != protocol_switch_info_->mapping_id) {
                 continue;
             }
+
             // Really bad if it's happening because we should only be in the mapping
             // process and not already decided.
             assert(protocol_switch_info_->state != ProtocolSwitchState::WAIT_ROUND_TO_SWITCH);
@@ -728,14 +729,15 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             delete protocol_switch_info_;
             protocol_switch_info_ = NULL;
         } else if (switch_info.type() == SwitchInfoProto::GENUINE_SWITCH_ROUND_VOTE) {
-            auto switching_round = switch_info.switching_round();
-            protocol_switch_info_->switching_round =
-                std::max(protocol_switch_info_->switching_round, switching_round);
             if (protocol_switch_info_->switching_round != 0) {
                 protocol_switch_info_->state = ProtocolSwitchState::SWITCH_TO_GENUINE;
             } else {
                 protocol_switch_info_->state = ProtocolSwitchState::WAITING_TO_GENUINE_ROUND_VOTE;
             }
+
+            auto switching_round = switch_info.switching_round();
+            protocol_switch_info_->switching_round =
+                std::max(protocol_switch_info_->switching_round, switching_round);
         } else if (switch_info.type() == SwitchInfoProto::MEC_SYNCHRONIZED) {
             protocol_switch_info_->remote_mec_synchro = true;
         } else if (switch_info.type() == SwitchInfoProto::LOW_LATENCY_MAPPING_REQUEST) {
