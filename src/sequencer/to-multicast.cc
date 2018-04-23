@@ -451,7 +451,7 @@ bool TOMulticast::GetBatch(vector<TxnProto*> *batch) {
     if (now > epoch_start_ + batch_count_ * epoch_duration_) {
         int txn_id_offset = 0;
         while(!destructor_invoked_ &&
-                now < epoch_start_ + (batch_count_ + 1) * epoch_duration_ &&
+                // now < epoch_start_ + (batch_count_ + 1) * epoch_duration_ &&
                 txn_id_offset < max_batch_size_) {
             int tx_base = configuration_->this_node_id +
                           configuration_->num_partitions * batch_count_;
