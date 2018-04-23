@@ -103,7 +103,7 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    transaction. \\
 
    Since transactions have consistent timestamps across partitions, each partition
-   must ensure to locally execute transactions in total order by following the order
+   must ensure to locally execute transactions in total order by following the ascending order
    of timestamps assigned to transactions.
    Therefore, a transaction $T$ can be executed locally on partition $P$ only when $P$ is sure that no
    transaction will have a smaller timestamp than $T$. As future timestamps have
