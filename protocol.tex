@@ -85,10 +85,26 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    To mitigate this problem, we can associate transactions dispatched by \PE{} with
    timestamps, just like \GE{}. Partitions now have a common way to order transactions but
    a transaction's timestamp must stay consistent across partitions to ensure total order.
-   As \GE{} requires involvement from other partitions to assign a timestamp and \PE{}
-   imposes a timestamp to other partitions, the transaction will be first dispatched
-   with \GE{} to get a timestamp. Finally, the transaction will be dispatched with \PE{}
-   as it can impose the timestamp decided by \GE{}.
+
+   \GE{} assigns a timestamp to a transaction by using an agreement between the involved partitions
+   which means \GE{} can't deterministically know the future timestamp of a transaction. On the other hand,
+   \PE{} imposes a timestamp decided by the transaction receiver which means the transaction
+   can be assigned any timestamp. In the case where a transaction requires \GE{} and \PE{}
+   for the dispatching and ordering, the transaction will be first assigned a timestamp
+   with \GE{}. When the transaction has a final timestamp value assigned by \GE{}, \PE{}
+   can impose the final timestamp to partitions using the \PE{} protocol.
+
+   % As \GE{} works by assigning a timestamp to a partition in a non-deterministic way (i.e.
+   % the \GE{} protocol doesn't know before assigning the )
+   % and \PE{} imposes a deterministic timestamp decided by the transaction receiver,
+   % \GE{} will be used to assign the non-deterministic timestamp to the transaction and then
+   % \PE{} will send the transaction to the remaining partition.
+
+   % As \GE{} requires involvement from other partitions to assign a timestamp and \PE{}
+   % imposes a timestamp to other partitions, the transaction will be first dispatched
+   % with \GE{} to get a timestamp. Finally, the transaction will be dispatched with \PE{}
+   % as it can impose the timestamp decided by \GE{}.
+
    % As \GE{} works by assigning timestamps to transactions, a transaction is first going to
    % be assigned a timestamp with \GE{}. Finally, if the transaction requires it,
    % the transaction will be dispatched with \PE{} to partitions which haven't participate in
@@ -154,7 +170,7 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    the two partitions \Ch{The problem is for both switching because when switching from calvin to to-multicast
    the switch should happen at the same round on both partitions.}. If the two partitions don't switch at the same round, the
    partition, which hasn't switch yet, will wait
-   indefinitely a message from the other partition and thus, blocking the ordering.
+   indefinitely a message from the other partition and thus, block the ordering.
    The switching protocol differs depending on the current employed communication scheme between the two switching partitions. \\
    % The protocol is different whether the current communication scheme is \GE{} or \PE{}. \\
 
@@ -173,7 +189,7 @@ The protocol introduced here aims to reduce latency of MPOs dispatching and orde
    only using \GE{}), the partition can change its round to synchronize with the other
    partition without any problem.
 
-   When both partitions are using \PE{} and the two partitions are not in the
+   On the other hand, when both partitions are using \PE{} and the two partitions are not in the
    same round, both partitions will need to jump to a common round number. This
    jump is not straightforward as partitions using \PE{} are connected to
    other partitions using \PE{}, and so on. Each partition connected with \PE{}
