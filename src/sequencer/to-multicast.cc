@@ -505,6 +505,7 @@ void TOMulticast::ExecuteTxns(int &batch_count) {
             << ":" << (*it)->logical_clock() << "\n" << std::flush;
         msg.add_data((*it)->SerializeAsString());
         // cache_file << "txn_id: " << (*it)->txn_id() << " log_clock: " << (*it)->logical_clock() << "\n";
+        delete *it;
     }
     sequencer_connection_->Send(msg);
 

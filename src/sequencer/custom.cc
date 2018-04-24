@@ -202,6 +202,7 @@ void CustomSequencer::RunThread() {
                 txn->ParseFromString(msg->data(i));
                 executable_operations_.push_back(txn);
             }
+            delete msg;
         }
         batch_messages_.erase(batch_messages_.find(batch_count_));
 
@@ -321,6 +322,8 @@ void CustomSequencer::ExecuteTxns(vector<TxnProto*> &txns) {
         order_file_ << (*it)->txn_id() << ":" << ss.str() << ":" << (*it)->batch_number()
             << ":" << (*it)->logical_clock() << "\n" << std::flush;
         msg.add_data((*it)->SerializeAsString());
+
+        delete *it;
     }
 
     for (auto part: partition_touched) {
@@ -573,6 +576,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
                 switch_info.set_current_round(batch_count_);
                 switch_info.set_switching_round(batch_count_ + SWITCH_ROUND_DELTA);
                 switch_info.set_type(SwitchInfoProto::INIT_MSG);
+                switch_info.set_init_msg_initializer(true);
                 SendSwitchMsg(&switch_info, next_switch.partition_id);
                 std::cout << "dispatched!! " << next_switch.partition_id << "\n"  << std::flush;
 
@@ -609,26 +613,44 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
         }
 
         if (switch_info.type() == SwitchInfoProto::INIT_MSG) {
-            // Check whether this partition is the initializer of this msg.
             if (protocol_switch_info_ == NULL) {
                 auto max_switching_round = std::max(switch_info.switching_round(), batch_count_ + SWITCH_ROUND_DELTA);
                 switch_info.set_switching_round(max_switching_round);
 
-                protocol_switch_info_ = new ProtocolSwitchInfo();
-                protocol_switch_info_->partition_id = partition_id;
-                protocol_switch_info_->init_round_num = batch_count_;
-
                 SwitchInfoProto response_info = SwitchInfoProto();
                 response_info.set_partition_type(GetPartitionType());
                 response_info.set_current_round(batch_count_);
-                response_info.set_switching_round(max_switching_round);
+                response_info.set_switching_round(switch_info.switching_round());
+                response_info.set_init_msg_initializer(false);
                 response_info.set_type(SwitchInfoProto::INIT_MSG);
                 SendSwitchMsg(&response_info, partition_id);
+
+                protocol_switch_info_ = new ProtocolSwitchInfo();
+                protocol_switch_info_->partition_id = partition_id;
+                protocol_switch_info_->init_round_num = batch_count_;
             } else if (protocol_switch_info_->partition_id != partition_id) {
                 SwitchInfoProto info = SwitchInfoProto();
                 info.set_type(SwitchInfoProto::ABORT);
 
                 SendSwitchMsg(&info, partition_id);
+                continue;
+            } else if (switch_info.init_msg_initializer() == true
+                    && protocol_switch_info_->state == ProtocolSwitchState::WAITING_INIT) {
+                std::cout << "Same time initialization with partition " << partition_id << " "
+                    << static_cast<int>(protocol_switch_info_->state) << "\n" << std::flush;
+
+                if (configuration_->this_node_partition < partition_id) {
+                    configuration_->this_node_protocol_switch.push_back(
+                        SwitchInfo(0, protocol_switch_info_->partition_id, protocol_switch_info_->protocol)
+                    );
+                }
+                // SwitchInfoProto info = SwitchInfoProto();
+                // info.set_type(SwitchInfoProto::ABORT);
+
+                // SendSwitchMsg(&info, partition_id);
+
+                delete protocol_switch_info_;
+                protocol_switch_info_ = NULL;
                 continue;
             }
 
@@ -707,6 +729,10 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
             // Really bad if it's happening because we should only be in the mapping
             // process and not already decided.
             assert(protocol_switch_info_->state != ProtocolSwitchState::WAIT_ROUND_TO_SWITCH);
+            // if (protocol_switch_info_->state == ProtocolSwitchState::WAIT_ROUND_TO_SWITCH) {
+                // continue;
+            // }
+
             std::cout << configuration_->this_node_partition << " aborded!\n" << std::flush;
 
             if (protocol_switch_info_->initiator) {
@@ -806,6 +832,9 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
             LaunchPartitionMapping(partition_mapping_required);
         } else if (switch_info.type() == SwitchInfoProto::LOW_LATENCY_MAPPING_FINISHED) {
+            if (switch_info.mapping_id() != protocol_switch_info_->mapping_id) {
+                continue;
+            }
             protocol_switch_info_->remote_mapping_finished = true;
         } else if (switch_info.type() == SwitchInfoProto::LOW_LATENCY_ROUND_VOTE) {
             if (protocol_switch_info_->is_mapping_leader) {
@@ -842,6 +871,7 @@ void CustomSequencer::HandleProtocolSwitch(bool got_txns_executed) {
 
         SwitchInfoProto switch_info = SwitchInfoProto();
         switch_info.set_type(SwitchInfoProto::LOW_LATENCY_MAPPING_FINISHED);
+        switch_info.set_mapping_id(protocol_switch_info_->mapping_id);
         SendSwitchMsg(&switch_info, protocol_switch_info_->partition_id);
     }
 

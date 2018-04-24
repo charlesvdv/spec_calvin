@@ -39,4 +39,8 @@ message SwitchInfoProto {
   repeated int32 neighbours_partition = 10;
 
   optional bool mapping_already_handled = 11;
+
+  // Check whether the message is sent is to initialize or to respond.
+  // Big HACK!
+  optional bool init_msg_initializer = 12 [default = false];
 }

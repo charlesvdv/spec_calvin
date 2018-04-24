@@ -180,6 +180,7 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
                     }
                     scheduler->client_->GotTxnExecuted(txn->txn_id());
                     delete manager;
+                    delete txn;
                     txn = NULL;
                 }
             } else {
@@ -217,6 +218,7 @@ void *DeterministicScheduler::RunWorkerThread(void *arg) {
                 }
                 scheduler->client_->GotTxnExecuted(txn->txn_id());
                 delete manager;
+                delete txn;
                 txn = NULL;
             }
         } else if (scheduler->message_queue->Pop(&message)) {
