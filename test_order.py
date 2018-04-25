@@ -1,9 +1,11 @@
 #!/usr/bin/python3
 import sys
 import re
+from functools import reduce
 
 def main():
-    filenames = sys.argv[1:]
+    action = sys.argv[1]
+    filenames = sys.argv[2:]
     filenames.sort(key=natural_sorting)
     if len(filenames) == 0:
         print('No files given')
@@ -12,24 +14,51 @@ def main():
     files = [open(x) for x in filenames]
 
     data = parse_files(files)
-    offsets = [0]*len(files)
 
-    if easy_order(data):
-        print('Everything is ordered with easy_order!')
-    else:
-        print('Not ordered.')
-        return
+    if action == 'order':
+        offsets = [0]*len(files)
 
-    if ordered(data, offsets):
-        print('Everything is ordered!')
-    else:
-        print('Not ordered.')
+        if easy_order(data):
+            print('Everything is ordered with easy_order!')
+        else:
+            print('Not ordered.')
+            return
 
-    print('Offsets: {}'.format([x+1 for x in offsets]))
-    print('Total: {}'.format(len(data)))
+        if ordered(data, offsets):
+            print('Everything is ordered!')
+        else:
+            print('Not ordered.')
+
+        print('Offsets: {}'.format([x+1 for x in offsets]))
+        print('Total: {}'.format(len(data)))
+    elif action == 'stat':
+        stat_on_round(data)
 
     for f in files:
         f.close()
+
+
+def stat_on_round(data):
+    for partition_id in range(len(data[0])):
+        stats = [0] * 10
+        average = 0
+        count = 0
+        for i in range(len(data)):
+            elem = data[i][partition_id]
+            if elem is None:
+                continue
+            if elem['round'] == -1:
+                continue
+            while len(stats) <= elem['round']:
+                stats.append(0)
+
+            stats[elem['round']] += 1
+            average += elem['round']
+            count += 1
+
+        stats = [x for x in zip(range(len(stats)), stats) if x[1] != 0]
+        average = average/count
+        print('Partition {}: {} {}'.format(partition_id, average, stats))
 
 
 def easy_order(data):
@@ -102,6 +131,7 @@ def parse_line(line):
     elems = line.split(':')
     result['id'] = int(elems[0])
     result['nodes'] = [int(x) for x in elems[1].split(',')]
+    result['round'] = int(elems[2])
     result['timestamp'] = int(elems[3])
     return result
 
