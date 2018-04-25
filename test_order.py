@@ -14,6 +14,12 @@ def main():
     data = parse_files(files)
     offsets = [0]*len(files)
 
+    if easy_order(data):
+        print('Everything is ordered with easy_order!')
+    else:
+        print('Not ordered.')
+        return
+
     if ordered(data, offsets):
         print('Everything is ordered!')
     else:
@@ -25,6 +31,22 @@ def main():
     for f in files:
         f.close()
 
+
+def easy_order(data):
+    for partition_id in range(len(data[0])):
+        previous = -1
+        for i in range(len(data)):
+            elem = data[i][partition_id]
+            if not elem:
+                continue
+            if not previous <= elem['timestamp']:
+                if len(elem['nodes']) == 1 and elem['timestamp'] == 0:
+                    # We have an SPO
+                    continue
+                print('Order is broken at transaction {} with timestamp {} for parition {}'.format(elem['id'], elem['timestamp'], partition_id))
+                return False
+            previous = elem['timestamp']
+    return True
 
 def ordered(data, offsets):
     while(True):
@@ -80,6 +102,7 @@ def parse_line(line):
     elems = line.split(':')
     result['id'] = int(elems[0])
     result['nodes'] = [int(x) for x in elems[1].split(',')]
+    result['timestamp'] = int(elems[3])
     return result
 
 
