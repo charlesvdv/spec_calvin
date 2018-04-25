@@ -106,7 +106,7 @@ void TOMulticast::RunThread() {
         if (standalone_) {
             ExecuteTxns(scheduler_batch_count_);
             vector<TxnProto*> batch;
-            if (GetBatch(&batch)) {
+            if (pending_operations_.Size() < 200 && GetBatch(&batch)) {
                 for (auto txn: batch) {
                     // std::cout << "adding txn!!\n";
                     pending_operations_.Push(std::make_pair(txn, TOMulticastState::WaitingReliableMulticast));
