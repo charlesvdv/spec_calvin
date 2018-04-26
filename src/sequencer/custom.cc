@@ -53,8 +53,7 @@ void CustomSequencer::RunThread() {
 
     Synchronize();
 
-    // LogicalClockT calvin_clock_value = 0;
-    map<int, LogicalClockT> previous_mecs;
+    LogicalClockT calvin_clock_value = 0;
     LogicalClockT mec = 0;
 
     epoch_start_ = GetTime();
@@ -100,12 +99,7 @@ void CustomSequencer::RunThread() {
                     pending_operations_[txn->txn_id()] = txn;
                 } else {
                     // Calvin only MPO doesn't have any logical clock.
-                    auto involved_partitions = Utils::GetInvolvedPartitions(txn);
-                    LogicalClockT calvin_clock_value = 0;
-                    for (auto part: involved_partitions) {
-                        calvin_clock_value = std::max(calvin_clock_value, previous_mecs[part]);
-                    }
-                    txn->set_logical_clock(calvin_clock_value + 1);
+                    txn->set_logical_clock(calvin_clock_value);
                     ready_operations_.push_back(txn);
                 }
             }
@@ -196,14 +190,11 @@ void CustomSequencer::RunThread() {
         // -- 5. Get global max executable clock and receive message inside the execution queue.
         auto max_clock = mec;
         mec = local_mec;
-        previous_mecs[configuration_->this_node_partition] = local_mec;
         for (auto msg: batch_messages_[batch_count_]) {
             // Calculate global mec.
             mec = std::min(mec, msg->mec());
             // std::cout << "temp mec: " << mec  << "received mec: " << msg->mec() << "\n";
             max_clock = std::max(max_clock, msg->mec());
-
-            previous_mecs[configuration_->NodePartition(msg->source_node())] = msg->mec();
 
             // Add new transaction to the execution queue.
             for (int i = 0; i < msg->data_size(); i++) {
@@ -217,7 +208,7 @@ void CustomSequencer::RunThread() {
 
 
         // -- 6. Update logical clock for terminaison.
-        // calvin_clock_value = max_clock;
+        calvin_clock_value = max_clock;
         // std::cout << batch_count_ << " " << mec << " " << calvin_clock_value << "\n";
         genuine_->SetLogicalClock(max_clock  + 1);
 
