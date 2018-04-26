@@ -240,7 +240,7 @@ void CustomSequencer::RunThread() {
 
         scheduler_batch_count_++;
 
-        int ROUND_DELTA = 15;
+        int ROUND_DELTA = 30;
         if (enable_adaptive_switching_ && (batch_count_ % ROUND_DELTA == 0 && batch_count_ >= 2*ROUND_DELTA)) {
             // std::cout << "try to adapte switching\n";
             OptimizeProtocols(ROUND_DELTA);
