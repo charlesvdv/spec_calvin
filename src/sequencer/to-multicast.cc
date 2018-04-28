@@ -16,7 +16,8 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
     pthread_create(&thread_, NULL, RunThreadHelper, this);
 
     // Create custom connection.
-    skeen_connection_ = multiplexer_->NewConnection("skeen");
+    message_queues = new AtomicQueue<MessageProto>();
+    skeen_connection_ = multiplexer_->NewConnection("skeen", &message_queues);
     if (standalone_) {
         sync_connection_ = multiplexer_->NewConnection("sync-multicast");
         sequencer_connection_ = multiplexer_->NewConnection("sequencer");
