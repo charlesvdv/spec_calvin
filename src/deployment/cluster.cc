@@ -207,6 +207,13 @@ void DeployOne(int nodeID, const Node *node, const char *exec,
     snprintf(copy_config, sizeof(copy_config), s.c_str(), node->host.c_str());
     system(copy_config);
 
+    // std::stringstream ss;
+    ss.str(std::string());
+    ss << "scp -rp myconfig.conf %s:" << cwd << "/myconfig.conf";
+    s = ss.str();
+    snprintf(copy_config, sizeof(copy_config), s.c_str(), node->host.c_str());
+    system(copy_config);
+
     char remote_opt3[1024];
     if (do_valgrind)
         snprintf(remote_opt3, sizeof(remote_opt3), remote_valgrind_opt3_fmt,
