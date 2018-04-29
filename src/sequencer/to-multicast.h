@@ -151,6 +151,7 @@ private:
     Configuration *configuration_;
     ConnectionMultiplexer *multiplexer_;
 
+    AtomicQueue<MessageProto> *message_queues;
     Connection *skeen_connection_;
     Connection *sync_connection_;
     Connection *sequencer_connection_;

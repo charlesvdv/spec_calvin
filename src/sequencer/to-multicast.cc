@@ -16,7 +16,8 @@ TOMulticast::TOMulticast(Configuration *conf, ConnectionMultiplexer *multiplexer
     pthread_create(&thread_, NULL, RunThreadHelper, this);
 
     // Create custom connection.
-    skeen_connection_ = multiplexer_->NewConnection("skeen");
+    message_queues = new AtomicQueue<MessageProto>();
+    skeen_connection_ = multiplexer_->NewConnection("skeen", &message_queues);
     if (standalone_) {
         sync_connection_ = multiplexer_->NewConnection("sync-multicast");
         sequencer_connection_ = multiplexer_->NewConnection("sequencer");
@@ -106,7 +107,9 @@ void TOMulticast::RunThread() {
         if (standalone_) {
             ExecuteTxns(scheduler_batch_count_);
             vector<TxnProto*> batch;
-            if (pending_operations_.Size() < 200 && GetBatch(&batch)) {
+            auto pending_size = pending_operations_.Size() + waiting_vote_operations_.size() + decided_operations_.size();
+            if (pending_size < 100 && GetBatch(&batch)) {
+                std::cout << "pending size: " << pending_size << "\n" << std::flush;
                 for (auto txn: batch) {
                     // std::cout << "adding txn!!\n";
                     pending_operations_.Push(std::make_pair(txn, TOMulticastState::WaitingReliableMulticast));
@@ -170,7 +173,7 @@ void TOMulticast::RunThread() {
                     LOG(GetLogicalClock(), "Unknow TO-MULTICAST state!");
             }
         } else {
-            Spin(0.001);
+            // Spin(0.001);
         }
     }
 }
@@ -178,6 +181,7 @@ void TOMulticast::RunThread() {
 void TOMulticast::ReceiveMessages() {
     MessageProto rcv_msg;
     while(skeen_connection_->GetMessage(&rcv_msg) && !destructor_invoked_) {
+        // std::cout << "got message\n" << std::flush;
         if (rcv_msg.type() == MessageProto::RMULTICAST_TXN) {
             TxnProto *txn = new TxnProto();
             assert(rcv_msg.data_size() == 1);
@@ -243,7 +247,8 @@ void TOMulticast::UpdateClockVote(int txn_id, int partition_id, LogicalClockT vo
         map<int, LogicalClockT> votes = txn_votes->second;
         // Should be the same but we don't have any consensus yet.
         // assert(partition_vote == votes[partition_id])
-        votes[partition_id] = std::max(vote, votes[partition_id]);
+        // votes[partition_id] = std::max(vote, votes[partition_id]);
+        votes[partition_id] = vote;
         txn_votes->second = votes;
     } else {
         map<int, LogicalClockT> votes;
