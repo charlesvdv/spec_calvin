@@ -9,7 +9,7 @@ fi
 
 BENCH_TYPE=$1
 
-NUMBER_OF_RUNS=2
+NUMBER_OF_RUNS=4
 TIMEOUT=120
 CALVIN_CMD="./bin/deployment/cluster  -c dist-deploy.conf -p src/deployment/portfile -d bin/deployment/db $BENCH_TYPE 0"
 
@@ -38,12 +38,12 @@ done
 
 total_mean=0
 for mean in ${means[@]}; do
-    total_mean=`python -c "print($total_mean+$mean)"`
+    total_mean=`python3 -c "print($total_mean+$mean)"`
 done
 
-total_mean=$(python -c "print($total_mean/$NUMBER_OF_RUNS)")
+total_mean=$(python3 -c "print($total_mean/$NUMBER_OF_RUNS)")
 
-stdev=`python <<END
+stdev=`python3 <<END
 import statistics
 import sys
 
