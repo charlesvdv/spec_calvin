@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+// #include "common/config_reader.h"
 #include "common/configuration.h"
 
 using std::map;
@@ -100,8 +101,10 @@ int main(int argc, char *argv[]) {
     // filling in db_args from argv
     ConstructDBArgs(argc, argv, arg_begin);
 
+    ConfigReader::Initialize("myconfig.conf");
+
     // get a config obj
-    Configuration config(-1, config_file);
+    Configuration config(-1, config_file, ConfigReader::Value("default_protocol"));
     cwd = getcwd(NULL, 0);
 
     FILE *port_fp = fopen(port_file, "r");

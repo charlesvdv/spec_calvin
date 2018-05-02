@@ -20,6 +20,7 @@
 #define _DB_COMMON_CONFIGURATION_H_
 
 #include <stdint.h>
+#include "common/config_reader.h"
 
 #include <map>
 #include <queue>
@@ -58,7 +59,7 @@ extern pthread_mutex_t mutex_for_item;
 
 class Configuration {
 public:
-    Configuration(int node_id, const string &filename);
+    Configuration(int node_id, const string &filename, string default_protocol_key);
     ~Configuration() {
         // Dump configuration of protocol.
         std::cout << "Low latency partition: ";
@@ -152,6 +153,8 @@ public:
     // TODO(alex): Comments.
     void ProcessConfigLine(char key[], char value[]);
     int ReadFromFile(const string &filename);
+
+    string default_protocol_key_;
 };
 
 #endif // _DB_COMMON_CONFIGURATION_H_

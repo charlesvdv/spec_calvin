@@ -13,7 +13,7 @@ TEST_LINKED_OBJECTS := $(PROTO_OBJS)
 
 # Link the template to avoid redundancy
 include $(MAKEFILE_TEMPLATE)
-	
+
 # Need to specify test cases explicitly because they have variables in recipe
 test-common: $(COMMON_TESTS)
 	@for a in $(COMMON_TESTS); do \

@@ -23,10 +23,10 @@ test-deployment: $(DEPLOYMENT_TESTS)
 # These are left over from the deployment Makefile.  I'm sure there's a far
 #  less redundant way to incorporate these, but for now they're fine here
 $(BINDIR)/deployment/cluster: $(OBJDIR)/deployment/cluster.o \
-                              $(PROTO_OBJS) $(OBJDIR)/common/configuration.o
+		      $(PROTO_OBJS) $(COMMON_OBJS) $(OBJDIR)/common/configuration.o
 	@echo + ld $@
 	@mkdir -p $(@D)
-	$(V)$(CXX) -o $@ $^ $(LDFLAGS) -lrt
+	$(V)$(CXX) -o $@ $^ $(LDFLAGS) -lrt $(ZMQLDFLAGS)
 
 $(BINDIR)/deployment/db: $(OBJDIR)/deployment/main.o \
                          $(PROTO_OBJS) $(COMMON_OBJS) $(BACKEND_OBJS) \

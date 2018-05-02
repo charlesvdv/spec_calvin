@@ -203,7 +203,7 @@ int main(int argc, char **argv) {
     signal(SIGTERM, &stop);
 
     // Build this node's configuration object.
-    Configuration config(StringToInt(argv[1]), "deploy-run.conf");
+    Configuration config(StringToInt(argv[1]), "deploy-run.conf", ConfigReader::Value("default_protocol"));
     config.InitInfo();
 
     PartitionDistribution *partition_distribution;

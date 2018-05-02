@@ -15,10 +15,10 @@
 
 #include "common/utils.h"
 
-using std::string;
+// using std::string;
 
-Configuration::Configuration(int node_id, const string &filename)
-    : this_node_id(node_id) {
+Configuration::Configuration(int node_id, const string &filename, string default_protocol_key)
+    : this_node_id(node_id), default_protocol_key_(default_protocol_key) {
     if (ReadFromFile(filename)) // Reading from file failed.
         exit(0);
 }
@@ -55,6 +55,16 @@ void Configuration::InitInfo() {
                                  << this_dc[i]->node_id);
     }
 
+    TxnProto::ProtocolType default_protocol;
+    // string default_protocol_key = ConfigReader::Value("default_protocol");
+    if (default_protocol_key_ == "to-multicast") {
+        default_protocol = TxnProto::GENUINE;
+    } else if (default_protocol_key_ == "calvin") {
+        default_protocol = TxnProto::LOW_LATENCY;
+    } else {
+        assert(false);
+    }
+
     // Add information about which protocol should be used.
     set<int> low_latency_partitions;
     for (auto node_info: all_nodes) {
@@ -72,7 +82,11 @@ void Configuration::InitInfo() {
     }
     for (auto part: low_latency_partitions) {
         std::cout << "set partition " << part << " as low latency\n";
-        partitions_protocol[part] = TxnProto::LOW_LATENCY;
+        if (default_protocol == TxnProto::GENUINE) {
+            partitions_protocol[part] = TxnProto::LOW_LATENCY;
+        } else if (default_protocol == TxnProto::LOW_LATENCY) {
+            partitions_protocol[part] = TxnProto::GENUINE;
+        }
         std::cout << partitions_protocol[part] << "\n";
     }
 }
