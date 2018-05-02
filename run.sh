@@ -54,3 +54,4 @@ END`
 echo ""
 echo "means: ${means[@]}"
 echo "total mean: $total_mean, standard deviation: $stdev"
+echo "(, $total_mean) +- (0, $stdev)"
