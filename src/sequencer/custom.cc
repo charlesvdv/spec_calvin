@@ -53,8 +53,9 @@ void CustomSequencer::RunThread() {
 
     Synchronize();
 
-    LogicalClockT calvin_clock_value = 0;
+    // LogicalClockT calvin_clock_value = 0;
     LogicalClockT mec = 0;
+    map<int, LogicalClockT> lmecs;
 
     epoch_start_ = GetTime();
     batch_count_ = 0;
@@ -99,6 +100,11 @@ void CustomSequencer::RunThread() {
                     pending_operations_[txn->txn_id()] = txn;
                 } else {
                     // Calvin only MPO doesn't have any logical clock.
+                    LogicalClockT calvin_clock_value = 0;
+                    auto parts = Utils::GetInvolvedPartitions(txn);
+                    for (auto part: parts) {
+                        calvin_clock_value = max(calvin_clock_value, lmecs[part]);
+                    }
                     txn->set_logical_clock(calvin_clock_value);
                     ready_operations_.push_back(txn);
                 }
@@ -196,6 +202,8 @@ void CustomSequencer::RunThread() {
             // std::cout << "temp mec: " << mec  << "received mec: " << msg->mec() << "\n";
             max_clock = std::max(max_clock, msg->mec());
 
+            lmecs[configuration_->NodePartition(msg->source_node())] = msg->mec();
+
             // Add new transaction to the execution queue.
             for (int i = 0; i < msg->data_size(); i++) {
                 TxnProto *txn = new TxnProto();
@@ -208,7 +216,7 @@ void CustomSequencer::RunThread() {
 
 
         // -- 6. Update logical clock for terminaison.
-        calvin_clock_value = max_clock;
+        // calvin_clock_value = max_clock;
         // std::cout << batch_count_ << " " << mec << " " << calvin_clock_value << "\n";
         genuine_->SetLogicalClock(max_clock  + 1);
 
