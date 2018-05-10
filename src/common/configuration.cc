@@ -71,7 +71,7 @@ void Configuration::InitInfo() {
         Node *node = node_info.second;
         // Set default
         if (node->partition_id != this_node_partition) {
-            partitions_protocol[node->partition_id] = TxnProto::GENUINE;
+            partitions_protocol[node->partition_id] = default_protocol;
         }
 
         if (node->partition_id == this_node_partition) {
